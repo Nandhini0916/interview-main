@@ -1079,7 +1079,7 @@ function InterviewRoom({ room, onLeave }) {
     <div className="interview-room">
       <div className="room-header">
         <div className="header-left">
-          <h2>AI Interview Room - Interviewer</h2>
+          <h2>True Hire</h2>
           <span className={`room-status ${room.isJoining ? 'joined' : 'hosting'}`}>
             {room.isJoining ? 'JOINED' : 'HOSTING'}
           </span>

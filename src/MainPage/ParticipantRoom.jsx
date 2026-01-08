@@ -720,7 +720,7 @@ function ParticipantRoom({ room, onLeave }) {
     <div className="participant-room">
       <div className="room-header">
         <div className="header-left">
-          <h2>AI Interview Room - Participant</h2>
+          <h2>True Hire</h2>
           <span className="room-status participant">CANDIDATE</span>
           <span className={`connection-status ${connectionStatus}`}>
             {connectionStatus === 'connected' ? '● Connected' : 
