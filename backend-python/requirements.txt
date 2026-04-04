@@ -9,3 +9,5 @@ ultralytics==8.0.186
 deepface==0.0.79
 numpy==1.24.3
 python-decouple==3.8
+setuptools==75.8.0
+wheel==0.45.1
