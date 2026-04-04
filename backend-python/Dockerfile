@@ -4,20 +4,21 @@ FROM python:3.10-slim
 # Set working directory inside container
 WORKDIR /app
 
-# Install system dependencies required for PyAudio, OpenCV, and MediaPipe
+# Install system dependencies
+# Required for PyAudio, OpenCV, and MediaPipe
 RUN apt-get update && apt-get install -y \
-    portaudio19-dev \     # Required for PyAudio
-    python3-dev \          # Python development headers
-    gcc \                  # C compiler
-    g++ \                  # C++ compiler
-    libgl1-mesa-glx \      # Required for OpenCV
-    libglib2.0-0 \         # Required for OpenCV
-    libsm6 \               # Required for OpenCV
-    libxext6 \             # Required for OpenCV
-    libxrender-dev \       # Required for OpenCV
-    libgomp1 \             # Required for MediaPipe
-    wget \                 # Utility for downloading
-    && rm -rf /var/lib/apt/lists/*  # Clean up to reduce image size
+    portaudio19-dev \
+    python3-dev \
+    gcc \
+    g++ \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file first (for better caching)
 COPY requirements.txt .
