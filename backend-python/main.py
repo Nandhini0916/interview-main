@@ -698,26 +698,26 @@ async def shutdown_event():
     ai_detector.cleanup()
     logger.info("✅ Application shutdown completed")
 
-if __name__ == "__main__":
-    print("=" * 60)
-    print("🚀 AI Interview Detection FastAPI Server")
-    print("=" * 60)
-    print("📡 Server URL: http://localhost:8001")
-    print("📱 Frontend URL: http://localhost:5173") 
-    print("🔧 Available endpoints:")
-    print("   - POST /start_interview")
-    print("   - POST /stop_interview")
-    print("   - POST /end_interview")
-    print("   - POST /set_reference_face")
-    print("   - GET  /health")
-    print("   - GET  /stats")
-    print("   - WebSocket /ws")
-    print("=" * 60)
+# if __name__ == "__main__":
+#    print("=" * 60)
+#    print("🚀 AI Interview Detection FastAPI Server")
+#    print("=" * 60)
+#    print("📡 Server URL: http://localhost:8001")
+#    print("📱 Frontend URL: http://localhost:5173") 
+#    print("🔧 Available endpoints:")
+#    print("   - POST /start_interview")
+#    print("   - POST /stop_interview")
+#    print("   - POST /end_interview")
+#    print("   - POST /set_reference_face")
+#    print("   - GET  /health")
+#    print("   - GET  /stats")
+#    print("   - WebSocket /ws")
+#    print("=" * 60)
     
-    uvicorn.run(
-        app, 
-        host="0.0.0.0", 
-        port=8001, 
-        log_level="info",
-        access_log=True
-    )
+#    uvicorn.run(
+#        app, 
+#        host="0.0.0.0", 
+#        port=8001, 
+#        log_level="info",
+#        access_log=True
+#    )
