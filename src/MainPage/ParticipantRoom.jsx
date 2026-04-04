@@ -31,8 +31,8 @@ function ParticipantRoom({ room, onLeave }) {
   const wsRef = useRef(null);
   const webrtcManagerRef = useRef(null);
 
-  const PYTHON_API_URL = 'http://localhost:8001';
-  const NODE_API_URL = 'http://localhost:8000/api';
+  const PYTHON_API_URL = process.env.REACT_APP_PYTHON_API_URL || 'http://localhost:8001';
+  const NODE_API_URL = process.env.REACT_APP_NODE_API_URL || 'http://localhost:8000/api';
 
   // Enhanced connection status management
   const updateConnectionStatus = (status) => {
@@ -167,7 +167,7 @@ function ParticipantRoom({ room, onLeave }) {
     try {
       if (wsRef.current) wsRef.current.close();
       
-      const ws = new WebSocket("ws://localhost:8001/ws");
+      const ws = new WebSocket(`${process.env.REACT_APP_PYTHON_WS_URL || 'ws://localhost:8001'}/ws`);
       
       ws.onopen = () => {
         console.log("✅ Participant WebSocket connected to AI backend");
