@@ -23,5 +23,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Use shell form to properly substitute $PORT environment variable
-CMD uvicorn main:app --host 0.0.0.0 --port $PORT
+# Render's default external port is 10000
+EXPOSE 10000
+
+# Use shell form to ensure proper startup
+CMD uvicorn main:app --host 0.0.0.0 --port 10000
