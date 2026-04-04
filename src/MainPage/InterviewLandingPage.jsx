@@ -25,7 +25,7 @@ const InterviewLandingPage = () => {
     lastName: ''
   });
 
-  const API_BASE_URL = process.env.REACT_APP_NODE_API_URL || 'http://localhost:8000/api';
+  const API_BASE_URL = process.env.REACT_APP_NODE_API_URL || 'http://localhost:8000';
 
   // Load user data from localStorage on component mount
   useEffect(() => {
@@ -83,7 +83,7 @@ const InterviewLandingPage = () => {
   const handleCreateRoom = async () => {
     if (roomPassword.trim()) {
       try {
-        const response = await fetch(`${API_BASE_URL}/rooms/create`, {
+        const response = await fetch(`${API_BASE_URL}/api/rooms/create`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -142,7 +142,7 @@ const InterviewLandingPage = () => {
       }
 
       try {
-        const response = await fetch(`${API_BASE_URL}/rooms/join`, {
+        const response = await fetch(`${API_BASE_URL}/api/rooms/join`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -194,7 +194,7 @@ const InterviewLandingPage = () => {
           return;
         }
 
-        const response = await fetch(`${API_BASE_URL}/auth/signup`, {
+        const response = await fetch(`${API_BASE_URL}/api/auth/signup`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -222,7 +222,7 @@ const InterviewLandingPage = () => {
         }
       } else {
         // Sign in
-        const response = await fetch(`${API_BASE_URL}/auth/signin`, {
+        const response = await fetch(`${API_BASE_URL}/api/auth/signin`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -253,39 +253,61 @@ const InterviewLandingPage = () => {
     }
   };
 
-  const handleGoogleAuth = async () => {
-    try {
-      // For demo purposes - in real app, you'd integrate with Google OAuth
-      const response = await fetch(`${API_BASE_URL}/auth/google`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: 'user@gmail.com',
-          firstName: 'Google',
-          lastName: 'User',
-          googleId: `google-${Date.now()}`
-        })
-      });
+  const handleGoogleAuth = () => {
+  // Check if Google script is loaded
+  if (!window.google) {
+    alert('Google Sign-In is loading. Please try again in a moment.');
+    return;
+  }
 
-      const result = await response.json();
+  const client = window.google.accounts.oauth2.initTokenClient({
+    client_id: process.env.REACT_APP_GOOGLE_CLIENT_ID || '1021826661780-p60tmmnr1gc2q5rlg5h9na359kvfg6li.apps.googleusercontent.com',
+    scope: 'email profile openid',
+    callback: async (tokenResponse) => {
+      try {
+        // Fetch user info using the access token
+        const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: {
+            'Authorization': `Bearer ${tokenResponse.access_token}`
+          }
+        });
+        const userInfo = await userInfoResponse.json();
+        
+        // Send to your backend
+        const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: userInfo.email,
+            firstName: userInfo.given_name || 'Google',
+            lastName: userInfo.family_name || 'User',
+            googleId: userInfo.sub
+          })
+        });
 
-      if (result.success) {
-        localStorage.setItem('interviewUser', JSON.stringify(result.user));
-        localStorage.setItem('authToken', result.token);
-        setUser(result.user);
-        setShowAuthOverlay(false);
-        setShowProfileMenu(false);
-        alert('Successfully authenticated with Google!');
-      } else {
-        alert(result.message || 'Google authentication failed');
+        const result = await response.json();
+
+        if (result.success) {
+          localStorage.setItem('interviewUser', JSON.stringify(result.user));
+          localStorage.setItem('authToken', result.token);
+          setUser(result.user);
+          setShowAuthOverlay(false);
+          setShowProfileMenu(false);
+          alert('Successfully authenticated with Google!');
+        } else {
+          alert(result.message || 'Google authentication failed');
+        }
+      } catch (error) {
+        console.error('Google auth error:', error);
+        alert('Google authentication failed. Please try again.');
       }
-    } catch (error) {
-      console.error('Google auth error:', error);
-      alert('Google authentication failed. Please try again.');
-    }
-  };
+    },
+  });
+  
+  client.requestAccessToken();
+};
 
   const handleLogout = () => {
     localStorage.removeItem('interviewUser');
@@ -324,7 +346,7 @@ const InterviewLandingPage = () => {
     if (currentRoom) {
       try {
         // Notify backend that user is leaving
-        const response = await fetch(`${API_BASE_URL}/rooms/${currentRoom.id}/leave`, {
+        const response = await fetch(`${API_BASE_URL}/api/rooms/${currentRoom.id}/leave`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
