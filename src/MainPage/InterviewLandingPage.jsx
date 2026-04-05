@@ -358,36 +358,41 @@ const handleGoogleAuth = useGoogleLogin({
   };
 
   const leaveMeeting = async () => {
-    if (currentRoom) {
-      try {
-        await fetch(`${API_BASE_URL}/api/rooms/${currentRoom.id}/leave`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            userId: user?.id
-          })
-        });
-      } catch (error) {
-        console.error('Error leaving room:', error);
-      }
-    }
-
-    setCurrentRoom(null);
-    setInterviewCode('');
-    setJoinRoomPassword('');
-    setJoinError('');
-  };
-
+  console.log("🚪 leaveMeeting called in InterviewLandingPage");
+  
   if (currentRoom) {
-    if (currentRoom.isJoining) {
-      return <ParticipantRoom room={currentRoom} onLeave={leaveMeeting} />;
-    } else {
-      return <InterviewRoom room={currentRoom} onLeave={leaveMeeting} />;
+    try {
+      await fetch(`${API_BASE_URL}/api/rooms/${currentRoom.id}/leave`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user?.id
+        })
+      });
+      console.log("✅ Backend notified about leaving");
+    } catch (error) {
+      console.error('Error leaving room:', error);
     }
   }
+
+  // Clear all room-related state
+  setCurrentRoom(null);
+  setInterviewCode('');
+  setJoinRoomPassword('');
+  setJoinError('');
+  setShowOverlay(false);
+  setShowProfileMenu(false);
+  setGeneratedRoomId('');
+  setRoomPassword('');
+  
+  // Clear localStorage
+  localStorage.removeItem('currentRoom');
+  
+  console.log("✅ State cleared, should return to landing page");
+};
 
   return (
     <div className="landing-container">

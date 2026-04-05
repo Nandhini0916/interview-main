@@ -526,40 +526,41 @@ function InterviewRoom({ room, onLeave }) {
 
   // Create session with proper error handling
   const createSession = async () => {
-    try {
-      const user = JSON.parse(localStorage.getItem('interviewUser'));
-      if (!user) {
-        console.error('No user found');
-        return null;
-      }
-      
-      const sessionId = `session-${room.id}-interviewer-${Date.now()}`;
-      const response = await fetch(`${NODE_API_URL}/api/detections/session/start`, {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: sessionId,
-          roomId: room.id,
-          userId: user.id,
-          userType: 'interviewer'
-        })
-      });
-      
-      const result = await response.json();
-      if (result.success) {
-        console.log('✅ Interviewer session created:', sessionId);
-        setCurrentSessionId(sessionId);
-        setSessionStartTime(new Date());
-        return sessionId;
-      } else {
-        console.error('❌ Failed to create interviewer session:', result.message);
-        return null;
-      }
-    } catch (error) {
-      console.error('❌ Error creating interviewer session:', error);
+  try {
+    const user = JSON.parse(localStorage.getItem('interviewUser'));
+    if (!user) {
+      console.error('No user found');
       return null;
     }
-  };
+    
+    const sessionId = `session-${room.id}-interviewer-${Date.now()}`;
+    const response = await fetch(`${NODE_API_URL}/api/detections/session/start`, {
+      method: "POST",
+      credentials: 'include',  // ADD THIS
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: sessionId,
+        roomId: room.id,
+        userId: user.id,
+        userType: 'interviewer'
+      })
+    });
+    
+    const result = await response.json();
+    if (result.success) {
+      console.log('✅ Interviewer session created:', sessionId);
+      setCurrentSessionId(sessionId);
+      setSessionStartTime(new Date());
+      return sessionId;
+    } else {
+      console.error('❌ Failed to create interviewer session:', result.message);
+      return null;
+    }
+  } catch (error) {
+    console.error('❌ Error creating interviewer session:', error);
+    return null;
+  }
+};
 
   const saveDetectionData = async (detectionData) => {
     try {
@@ -983,18 +984,93 @@ function InterviewRoom({ room, onLeave }) {
   };
 
   const handleLeaveMeeting = async () => {
-    if (interviewStatus === "active") await stopInterview();
-    else if (currentSessionId) await generateFinalReport();
-    if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
-    if (screenStream) screenStream.getTracks().forEach(track => track.stop());
-    if (webrtcManagerRef.current) webrtcManagerRef.current.close();
-    if (wsRef.current) wsRef.current.close();
-    setChatConnected(false);
-    setAiConnected(false);
-    setSignalingConnected(false);
-    setIsConnecting(false);
+  console.log("🚪 handleLeaveMeeting called in InterviewRoom");
+  
+  try {
+    if (interviewStatus === "active") {
+      await stopInterview();
+    } else if (currentSessionId) {
+      await generateFinalReport();
+    }
+  } catch (error) {
+    console.error("Error during cleanup:", error);
+  }
+  
+  // Stop all media streams
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => {
+      track.stop();
+      track.enabled = false;
+    });
+    setMediaStream(null);
+  }
+  
+  if (screenStream) {
+    screenStream.getTracks().forEach(track => {
+      track.stop();
+      track.enabled = false;
+    });
+    setScreenStream(null);
+  }
+  
+  // Close WebRTC connection
+  if (webrtcManagerRef.current) {
+    webrtcManagerRef.current.close();
+    webrtcManagerRef.current = null;
+  }
+  
+  // Close WebSocket
+  if (wsRef.current) {
+    wsRef.current.close();
+    wsRef.current = null;
+  }
+  
+  // Clear all state
+  setChatConnected(false);
+  setAiConnected(false);
+  setSignalingConnected(false);
+  setIsConnecting(false);
+  setCurrentSessionId(null);
+  setSessionStartTime(null);
+  setMessages([]);
+  setParticipantStream(null);
+  setActiveParticipants(0);
+  setConnectionStatus("disconnected");
+  setInterviewStatus("not_started");
+  setReferenceFaceSet(false);
+  
+  // Clear AI results
+  setAiResults({
+    faces: 0,
+    eye_moves: 0,
+    face_alert: "",
+    gender: "Unknown",
+    mood: "neutral",
+    bg_voice: false,
+    lipsync: false,
+    verification: "Not set",
+    speech: false,
+    mouth_ratio: 0,
+    interview_active: false
+  });
+  
+  // Clear video elements
+  if (videoRef.current) {
+    videoRef.current.srcObject = null;
+  }
+  if (participantVideoRef.current) {
+    participantVideoRef.current.srcObject = null;
+  }
+  
+  console.log("✅ Cleanup complete, calling onLeave");
+  
+  // Call the onLeave callback to navigate back
+  if (onLeave) {
     onLeave();
-  };
+  } else {
+    console.error("❌ onLeave callback is not defined!");
+  }
+};
 
   useEffect(() => {
     if (participantStream && participantVideoRef.current) {

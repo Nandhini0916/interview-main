@@ -479,35 +479,36 @@ function ParticipantRoom({ room, onLeave }) {
 
   // Session management
   const createSession = async () => {
-    try {
-      const user = JSON.parse(localStorage.getItem('interviewUser') || '{}');
-      const sessionId = `session-${room.id}-participant-${Date.now()}`;
-      
-      const response = await fetch(`${NODE_API_URL}/api/detections/session/start`, {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: sessionId,
-          roomId: room.id,
-          userId: user.id || 'participant',
-          userType: 'participant'
-        })
-      });
-      
-      const result = await response.json();
-      if (result.success) {
-        console.log('✅ Participant session created:', sessionId);
-        setCurrentSessionId(sessionId);
-        return sessionId;
-      } else {
-        console.error('❌ Failed to create participant session:', result.message);
-        return null;
-      }
-    } catch (error) {
-      console.error('❌ Error creating participant session:', error);
+  try {
+    const user = JSON.parse(localStorage.getItem('interviewUser') || '{}');
+    const sessionId = `session-${room.id}-participant-${Date.now()}`;
+    
+    const response = await fetch(`${NODE_API_URL}/api/detections/session/start`, {
+      method: "POST",
+      credentials: 'include',  // ADD THIS
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: sessionId,
+        roomId: room.id,
+        userId: user.id || 'participant',
+        userType: 'participant'
+      })
+    });
+    
+    const result = await response.json();
+    if (result.success) {
+      console.log('✅ Participant session created:', sessionId);
+      setCurrentSessionId(sessionId);
+      return sessionId;
+    } else {
+      console.error('❌ Failed to create participant session:', result.message);
       return null;
     }
-  };
+  } catch (error) {
+    console.error('❌ Error creating participant session:', error);
+    return null;
+  }
+};
 
   const saveDetectionData = async (detectionData) => {
     try {
@@ -641,24 +642,68 @@ function ParticipantRoom({ room, onLeave }) {
   };
 
   const handleLeaveMeeting = async () => {
-    console.log('🚪 Leaving meeting...');
-    stopCamera();
-    
-    if (currentSessionId) {
-      try {
-        await fetch(`${NODE_API_URL}/api/detections/session/end`, {
-          method: "POST",
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId: currentSessionId })
-        });
-        console.log('✅ Session ended in database');
-      } catch (error) {
-        console.error('❌ Error ending session:', error);
-      }
+  console.log("🚪 Participant handleLeaveMeeting called");
+  
+  // Stop camera and cleanup
+  stopCamera();
+  
+  // End session
+  if (currentSessionId) {
+    try {
+      await fetch(`${NODE_API_URL}/api/detections/session/end`, {
+        method: "POST",
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: currentSessionId })
+      });
+      console.log('✅ Session ended in database');
+    } catch (error) {
+      console.error('❌ Error ending session:', error);
     }
-    
+  }
+  
+  // Close WebRTC connection
+  if (webrtcManagerRef.current) {
+    webrtcManagerRef.current.close();
+    webrtcManagerRef.current = null;
+  }
+  
+  // Close WebSocket
+  if (wsRef.current) {
+    wsRef.current.close();
+    wsRef.current = null;
+  }
+  
+  // Clear all state
+  setCurrentSessionId(null);
+  setMessages([]);
+  setInterviewerStream(null);
+  setMediaStream(null);
+  setScreenStream(null);
+  setChatOnline(false);
+  setSignalingConnected(false);
+  setAiConnected(false);
+  setIsConnecting(false);
+  setInterviewerConnected(false);
+  setConnectionStatus("disconnected");
+  
+  // Clear video elements
+  if (videoRef.current) {
+    videoRef.current.srcObject = null;
+  }
+  if (interviewerVideoRef.current) {
+    interviewerVideoRef.current.srcObject = null;
+  }
+  
+  console.log("✅ Participant cleanup complete, calling onLeave");
+  
+  // Call onLeave to navigate back
+  if (onLeave) {
     onLeave();
-  };
+  } else {
+    console.error("❌ onLeave callback is not defined in ParticipantRoom!");
+  }
+};
 
   const copyRoomId = () => {
     navigator.clipboard.writeText(room.id)
