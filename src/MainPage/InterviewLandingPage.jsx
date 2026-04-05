@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FaKeyboard, FaUser, FaGoogle, FaTimes, FaSignInAlt, FaUserPlus, FaSignOutAlt, FaLock } from 'react-icons/fa';
+import { useGoogleLogin } from '@react-oauth/google'
+import { jwtDecode } from 'jwt-decode'
 import InterviewRoom from './InterviewRoom';
 import ParticipantRoom from './ParticipantRoom';
 import './InterviewLandingPage.css';
@@ -265,87 +267,55 @@ const InterviewLandingPage = () => {
     }
   };
 
-const handleGoogleAuth = () => {
-  console.log('=== GOOGLE AUTH CLICKED ===');
-  
-  // Get Client ID from environment
-  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-  console.log('Client ID:', clientId);
-  
-  if (!clientId) {
-    console.error('No Google Client ID found!');
-    alert('Configuration error: Google Client ID not set. Please contact support.');
-    return;
-  }
-  
-  // Wait for Google to load if not ready
-  if (!window.google) {
-    console.log('Google not loaded yet, waiting...');
-    alert('Google Sign-In is loading. Please click again in a moment.');
-    return;
-  }
-  
-  try {
-    console.log('Initializing Google One Tap...');
+const handleGoogleAuth = useGoogleLogin({
+  onSuccess: async (tokenResponse) => {
+    console.log('Google login success:', tokenResponse)
     
-    // Initialize Google One Tap
-    window.google.accounts.id.initialize({
-      client_id: clientId,
-      callback: async (response) => {
-        console.log('Google callback received!');
-        
-        try {
-          // Decode the JWT token
-          const credential = response.credential;
-          const decoded = JSON.parse(atob(credential.split('.')[1]));
-          console.log('User info:', decoded);
-          
-          const apiUrl = import.meta.env.VITE_NODE_API_URL || 'http://localhost:8000';
-          console.log('Sending to backend:', apiUrl);
-          
-          // Send to your backend
-          const res = await fetch(`${apiUrl}/api/auth/google`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              email: decoded.email,
-              firstName: decoded.given_name || 'Google',
-              lastName: decoded.family_name || 'User',
-              googleId: decoded.sub
-            })
-          });
-          
-          const result = await res.json();
-          console.log('Backend response:', result);
-          
-          if (result.success) {
-            localStorage.setItem('interviewUser', JSON.stringify(result.user));
-            localStorage.setItem('authToken', result.token);
-            setUser(result.user);
-            setShowAuthOverlay(false);
-            setShowProfileMenu(false);
-            alert('Successfully logged in with Google!');
-          } else {
-            alert(result.message || 'Google authentication failed');
-          }
-        } catch (err) {
-          console.error('Error:', err);
-          alert('Authentication failed: ' + err.message);
-        }
-      },
-    });
-    
-    // Show the One Tap prompt
-    console.log('Showing Google One Tap prompt...');
-    window.google.accounts.id.prompt();
-    
-  } catch (err) {
-    console.error('Error initializing Google:', err);
-    alert('Failed to initialize Google Sign-In: ' + err.message);
-  }
-};
+    try {
+      // Decode the credential to get user info
+      const decoded = jwtDecode(tokenResponse.credential)
+      console.log('Decoded user:', decoded)
+      
+      const apiUrl = import.meta.env.VITE_NODE_API_URL || 'http://localhost:8000'
+      
+      // Send to your backend
+      const response = await fetch(`${apiUrl}/api/auth/google`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: decoded.email,
+          firstName: decoded.given_name || 'Google',
+          lastName: decoded.family_name || 'User',
+          googleId: decoded.sub
+        })
+      })
+      
+      const result = await response.json()
+      console.log('Backend response:', result)
+      
+      if (result.success) {
+        localStorage.setItem('interviewUser', JSON.stringify(result.user))
+        localStorage.setItem('authToken', result.token)
+        setUser(result.user)
+        setShowAuthOverlay(false)
+        setShowProfileMenu(false)
+        alert('Successfully authenticated with Google!')
+      } else {
+        alert(result.message || 'Google authentication failed')
+      }
+    } catch (error) {
+      console.error('Error:', error)
+      alert('Authentication failed: ' + error.message)
+    }
+  },
+  onError: (error) => {
+    console.error('Google login failed:', error)
+    alert('Google login failed. Please try again.')
+  },
+  flow: 'auth-code', // Use auth-code flow for better security[citation:9]
+})
 
   const handleLogout = () => {
     localStorage.removeItem('interviewUser');
@@ -579,8 +549,8 @@ const handleGoogleAuth = () => {
                   Sign Up
                 </button>
                 <div className="dropdown-divider"></div>
-                <button className="dropdown-item google-auth-dropdown" onClick={handleGoogleAuth}>
-                  <FaGoogle className="dropdown-icon" />
+                <button className="google-auth-button" onClick={handleGoogleAuth}>
+                  <FaGoogle className="google-icon" />
                   Continue with Google
                 </button>
               </>
