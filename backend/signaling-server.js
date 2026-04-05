@@ -1,7 +1,9 @@
 const WebSocket = require('ws');
 
-const wss = new WebSocket.Server({ port: 8081 });
-console.log('🚀 WebRTC Signaling Server started on port 8081');
+// Use PORT from environment variable for Render
+const PORT = process.env.PORT || 8081;
+const wss = new WebSocket.Server({ port: PORT });
+console.log(`🚀 WebRTC Signaling Server started on port ${PORT}`);
 
 const rooms = new Map();
 const clients = new Map();
@@ -37,7 +39,6 @@ wss.on('connection', (ws) => {
     joinedAt: new Date().toISOString()
   });
 
-  // Setup heartbeat for this connection
   setupHeartbeat(ws, clientId);
 
   ws.on('message', (data) => {
@@ -51,27 +52,22 @@ wss.on('connection', (ws) => {
         case 'join':
           handleJoin(ws, message, clientId);
           break;
-
         case 'offer':
         case 'answer':
         case 'ice-candidate':
           handleWebRTCMessage(ws, message, clientId);
           break;
-
         case 'chat':
           handleChatMessage(ws, message, clientId);
           break;
-
         case 'screen_share_state':
           handleScreenShareState(ws, message, clientId);
           break;
-
         case 'ping':
           safeSend(ws, { type: 'pong', timestamp: Date.now() });
           break;
-
         default:
-          console.warn(`⚠️ Unknown message type: ${message.type} from client ${clientId}`);
+          console.warn(`⚠️ Unknown message type: ${message.type}`);
           safeSend(ws, { type: 'error', message: 'Unknown message type' });
       }
     } catch (error) {
@@ -83,7 +79,7 @@ wss.on('connection', (ws) => {
   ws.on('close', (code, reason) => {
     const client = clients.get(ws);
     if (client) {
-      console.log(`🔌 ${client.role} ${client.id} disconnected from room ${client.room} (code: ${code}, reason: ${reason})`);
+      console.log(`🔌 ${client.role} ${client.id} disconnected from room ${client.room}`);
       handleDisconnect(ws);
       clients.delete(ws);
     }
@@ -93,7 +89,6 @@ wss.on('connection', (ws) => {
     console.error(`❌ WebSocket error for client ${clientId}:`, error);
   });
 
-  // Send welcome message
   safeSend(ws, { 
     type: 'welcome', 
     message: 'Connected to signaling server',
@@ -102,7 +97,6 @@ wss.on('connection', (ws) => {
   });
 });
 
-// FIXED: Enhanced join handler with proper room management
 function handleJoin(ws, message, clientId) {
   const { room, role, userType, userId } = message;
   const client = clients.get(ws);
@@ -114,12 +108,10 @@ function handleJoin(ws, message, clientId) {
 
   console.log(`👤 ${role} ${clientId} joining room ${room}`);
 
-  // Leave previous room if any
   if (client.room && client.room !== room) {
     handleLeaveRoom(ws, client.room);
   }
 
-  // Get or create room
   let roomData = rooms.get(room);
   if (!roomData) {
     roomData = { 
@@ -133,35 +125,27 @@ function handleJoin(ws, message, clientId) {
     console.log(`🏠 New room created: ${room}`);
   }
 
-  // Check for duplicate interviewer
   if (role === 'interviewer') {
     if (roomData.interviewer) {
-      safeSend(ws, { 
-        type: 'error', 
-        message: 'Interviewer already exists in this room' 
-      });
+      safeSend(ws, { type: 'error', message: 'Interviewer already exists' });
       return;
     }
     roomData.interviewer = client;
   } else if (role === 'participant') {
-    // Allow multiple participants
     roomData.participants.push(client);
   }
 
-  // Update client info
   client.room = room;
   client.role = role;
   client.userType = userType || role;
   client.userId = userId || `user-${clientId}`;
   
-  // Add to room clients
   if (!roomData.clients.find(c => c.ws === ws)) {
     roomData.clients.push(client);
   }
 
-  console.log(`✅ ${role} ${clientId} joined room ${room}. Room now has ${roomData.clients.length} clients`);
+  console.log(`✅ ${role} ${clientId} joined room ${room}. ${roomData.clients.length} clients`);
 
-  // Send confirmation to joining client
   safeSend(ws, { 
     type: 'joined', 
     room: room,
@@ -171,11 +155,9 @@ function handleJoin(ws, message, clientId) {
     timestamp: Date.now()
   });
 
-  // FIXED: Enhanced peer notification logic with better role-based routing
   roomData.clients.forEach(otherClient => {
     if (otherClient.ws !== ws && otherClient.ws.readyState === WebSocket.OPEN) {
       if (role === 'participant' && otherClient.role === 'interviewer') {
-        console.log(`🎯 Notifying interviewer about new participant`);
         safeSend(otherClient.ws, { 
           type: 'participant_joined',
           room: room,
@@ -184,7 +166,6 @@ function handleJoin(ws, message, clientId) {
           timestamp: Date.now()
         });
       } else if (role === 'interviewer' && otherClient.role === 'participant') {
-        console.log(`🎯 Notifying participant about interviewer`);
         safeSend(otherClient.ws, { 
           type: 'interviewer_joined',
           room: room,
@@ -192,119 +173,61 @@ function handleJoin(ws, message, clientId) {
           userId: client.userId,
           timestamp: Date.now()
         });
-      } else {
-        // Notify about peer join
-        safeSend(otherClient.ws, {
-          type: 'peer_joined',
-          room: room,
-          role: role,
-          peerId: clientId,
-          userId: client.userId,
-          timestamp: Date.now()
-        });
       }
     }
   });
 
-  // Send current room state to the new client
   const roomState = {
     type: 'room_state',
     room: room,
     clients: roomData.clients.map(c => ({
       id: c.id,
       role: c.role,
-      userType: c.userType,
       userId: c.userId
     })),
     timestamp: Date.now()
   };
   safeSend(ws, roomState);
-
-  logRoomStatus(room);
 }
 
-// FIXED: Enhanced WebRTC message handling with proper routing
 function handleWebRTCMessage(senderWs, message, senderId) {
   const client = clients.get(senderWs);
-  if (!client || !client.room) {
-    console.warn(`⚠️ Client ${senderId} not in a room`);
-    return;
-  }
+  if (!client || !client.room) return;
 
   const roomData = rooms.get(client.room);
-  if (!roomData) {
-    console.warn(`⚠️ Room ${client.room} not found`);
-    return;
-  }
+  if (!roomData) return;
 
-  console.log(`🔄 Forwarding ${message.type} from ${client.role} ${senderId} in room ${client.room}`);
-
-  let sentCount = 0;
   let targetClients = [];
   
-  // FIXED: Enhanced message routing logic
   if (message.type === 'offer') {
-    // Offer goes from interviewer to all participants
     if (client.role === 'interviewer') {
       targetClients = roomData.participants;
-    } else {
-      console.warn(`⚠️ Offer can only be sent by interviewer, but sent by ${client.role}`);
-      return;
     }
   } else if (message.type === 'answer') {
-    // Answer goes from participant to interviewer
-    if (client.role === 'participant') {
-      if (roomData.interviewer) {
-        targetClients = [roomData.interviewer];
-      } else {
-        console.warn(`⚠️ No interviewer available to receive answer`);
-        return;
-      }
-    } else {
-      console.warn(`⚠️ Answer can only be sent by participant, but sent by ${client.role}`);
-      return;
+    if (client.role === 'participant' && roomData.interviewer) {
+      targetClients = [roomData.interviewer];
     }
   } else if (message.type === 'ice-candidate') {
-    // ICE candidates go to all other clients in the room
     targetClients = roomData.clients.filter(c => c.ws !== senderWs);
   }
 
-  // Send messages to target clients
   targetClients.forEach(targetClient => {
     if (targetClient.ws.readyState === WebSocket.OPEN) {
-      const forwardedMessage = {
+      safeSend(targetClient.ws, {
         ...message,
         senderId: senderId,
-        senderRole: client.role,
-        senderUserId: client.userId
-      };
-      if (safeSend(targetClient.ws, forwardedMessage)) {
-        sentCount++;
-        console.log(`📤 Forwarded ${message.type} to ${targetClient.role} ${targetClient.id}`);
-      }
+        senderRole: client.role
+      });
     }
   });
-
-  console.log(`📤 ${message.type} forwarded to ${sentCount} clients`);
 }
 
-// FIXED: Enhanced chat message handling - ALWAYS handle chat messages from signaling
 function handleChatMessage(senderWs, message, senderId) {
   const client = clients.get(senderWs);
-  if (!client || !client.room) {
-    console.warn(`⚠️ Client ${senderId} not in a room, cannot send chat`);
-    return;
-  }
+  if (!client || !client.room) return;
 
   const roomData = rooms.get(client.room);
-  if (!roomData) {
-    console.warn(`⚠️ Room ${client.room} not found`);
-    return;
-  }
-
-  // FIXED: Remove the data channel check - always handle chat messages
-  // This ensures signaling works as a reliable fallback when data channels fail
-  console.log(`💬 Processing chat message from ${client.role} ${senderId} via signaling`);
+  if (!roomData) return;
 
   const chatMessage = {
     type: 'chat',
@@ -314,34 +237,22 @@ function handleChatMessage(senderWs, message, senderId) {
     senderUserId: client.userId,
     timestamp: message.timestamp || Date.now(),
     room: client.room,
-    fromSignaling: true // Mark as from signaling
+    fromSignaling: true
   };
 
-  let sentCount = 0;
-  
-  // Send to all other clients in the room
   roomData.clients.forEach(targetClient => {
     if (targetClient.ws !== senderWs && targetClient.ws.readyState === WebSocket.OPEN) {
-      if (safeSend(targetClient.ws, chatMessage)) {
-        sentCount++;
-        console.log(`📤 Chat delivered to ${targetClient.role} ${targetClient.id}`);
-      }
+      safeSend(targetClient.ws, chatMessage);
     }
   });
-
-  console.log(`💬 Chat from ${client.role} ${senderId} delivered to ${sentCount} clients via signaling`);
 }
 
-// FIXED: Enhanced screen share state handling - ALWAYS handle from signaling
 function handleScreenShareState(senderWs, message, senderId) {
   const client = clients.get(senderWs);
   if (!client || !client.room) return;
 
   const roomData = rooms.get(client.room);
   if (!roomData) return;
-
-  // FIXED: Remove the data channel check - always handle screen share state
-  console.log(`🖥️ Processing screen share state from ${client.role} ${senderId} via signaling`);
 
   const screenMessage = {
     type: 'screen_share_state',
@@ -351,22 +262,16 @@ function handleScreenShareState(senderWs, message, senderId) {
     senderUserId: client.userId,
     timestamp: Date.now(),
     room: client.room,
-    fromSignaling: true // Mark as from signaling
+    fromSignaling: true
   };
 
-  let sentCount = 0;
   roomData.clients.forEach(targetClient => {
     if (targetClient.ws !== senderWs && targetClient.ws.readyState === WebSocket.OPEN) {
-      if (safeSend(targetClient.ws, screenMessage)) {
-        sentCount++;
-      }
+      safeSend(targetClient.ws, screenMessage);
     }
   });
-
-  console.log(`🖥️ Screen share state from ${client.role} ${senderId}: ${message.isSharing} (sent to ${sentCount} clients via signaling)`);
 }
 
-// FIXED: Enhanced disconnect handling with better cleanup
 function handleDisconnect(ws) {
   const client = clients.get(ws);
   if (!client || !client.room) return;
@@ -374,50 +279,32 @@ function handleDisconnect(ws) {
   const roomData = rooms.get(client.room);
   if (!roomData) return;
 
-  // Store client info for notification
-  const clientInfo = {
-    role: client.role,
-    id: client.id,
-    userId: client.userId,
-    room: client.room
-  };
-
-  // Remove client from room
   roomData.clients = roomData.clients.filter(c => c.ws !== ws);
   
-  // Update interviewer/participants
   if (client.role === 'interviewer') {
     roomData.interviewer = null;
   } else if (client.role === 'participant') {
     roomData.participants = roomData.participants.filter(p => p.ws !== ws);
   }
 
-  console.log(`👋 ${client.role} ${client.id} left room ${client.room} (${roomData.clients.length} remaining)`);
-
-  // Notify other clients about the disconnect
   roomData.clients.forEach(otherClient => {
     if (otherClient.ws.readyState === WebSocket.OPEN) {
       safeSend(otherClient.ws, {
         type: 'peer_disconnected',
-        role: clientInfo.role,
-        senderId: clientInfo.id,
-        senderUserId: clientInfo.userId,
-        room: clientInfo.room,
+        role: client.role,
+        senderId: client.id,
+        room: client.room,
         timestamp: Date.now()
       });
     }
   });
 
-  // Cleanup empty room
   if (roomData.clients.length === 0) {
     rooms.delete(client.room);
-    console.log(`🏚️ Room ${client.room} deleted (empty)`);
-  } else {
-    logRoomStatus(client.room);
+    console.log(`🏚️ Room ${client.room} deleted`);
   }
 }
 
-// Helper function to leave room
 function handleLeaveRoom(ws, roomId) {
   const roomData = rooms.get(roomId);
   if (!roomData) return;
@@ -432,37 +319,8 @@ function handleLeaveRoom(ws, roomId) {
   } else if (client.role === 'participant') {
     roomData.participants = roomData.participants.filter(p => p.ws !== ws);
   }
-
-  console.log(`🚪 ${client.role} ${client.id} left room ${roomId}`);
 }
 
-// Helper function to log room status
-function logRoomStatus(roomId) {
-  const roomData = rooms.get(roomId);
-  if (!roomData) return;
-
-  const status = {
-    room: roomId,
-    totalClients: roomData.clients.length,
-    interviewer: roomData.interviewer ? {
-      id: roomData.interviewer.id,
-      userId: roomData.interviewer.userId
-    } : null,
-    participants: roomData.participants.map(p => ({
-      id: p.id,
-      userId: p.userId
-    })),
-    clientRoles: roomData.clients.map(c => ({ 
-      id: c.id, 
-      role: c.role,
-      userId: c.userId
-    }))
-  };
-  
-  console.log('📊 Room Status:', JSON.stringify(status, null, 2));
-}
-
-// FIXED: Enhanced heartbeat and connection monitoring
 function setupHeartbeat(ws, clientId) {
   const interval = setInterval(() => {
     if (ws.readyState === WebSocket.OPEN) {
@@ -470,85 +328,31 @@ function setupHeartbeat(ws, clientId) {
     } else {
       clearInterval(interval);
     }
-  }, 30000); // Send ping every 30 seconds
+  }, 30000);
 
-  ws.on('close', () => {
-    clearInterval(interval);
-  });
-
-  ws.on('error', () => {
-    clearInterval(interval);
-  });
+  ws.on('close', () => clearInterval(interval));
+  ws.on('error', () => clearInterval(interval));
 }
 
-// Periodic cleanup and stats logging
+// Periodic stats
 setInterval(() => {
-  const stats = {
-    timestamp: new Date().toISOString(),
-    totalRooms: rooms.size,
-    totalClients: clients.size,
-    rooms: Array.from(rooms.entries()).map(([roomId, room]) => ({
-      roomId,
-      clientCount: room.clients.length,
-      hasInterviewer: !!room.interviewer,
-      participantCount: room.participants.length,
-      createdAt: room.createdAt
-    }))
-  };
-  
-  console.log('📈 Server Statistics:', JSON.stringify(stats, null, 2));
-  
-  // Cleanup dead connections
-  let cleanedCount = 0;
-  clients.forEach((client, ws) => {
-    if (ws.readyState !== WebSocket.OPEN) {
-      console.log(`🧹 Cleaning up dead connection: ${client.role} ${client.id}`);
-      handleDisconnect(ws);
-      clients.delete(ws);
-      cleanedCount++;
-    }
-  });
-  
-  if (cleanedCount > 0) {
-    console.log(`🧹 Cleaned up ${cleanedCount} dead connections`);
-  }
-}, 60000); // Run every minute
+  console.log(`📊 Stats: ${rooms.size} rooms, ${clients.size} clients`);
+}, 60000);
 
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('🛑 Shutting down signaling server...');
-  
-  // Notify all clients
   clients.forEach((client, ws) => {
     if (ws.readyState === WebSocket.OPEN) {
-      safeSend(ws, { 
-        type: 'server_shutdown', 
-        message: 'Server is shutting down',
-        timestamp: Date.now()
-      });
+      safeSend(ws, { type: 'server_shutdown', message: 'Server is shutting down' });
     }
   });
-  
-  // Close all connections
   setTimeout(() => {
     wss.close(() => {
-      console.log('✅ Signaling server shut down gracefully');
+      console.log('✅ Signaling server shut down');
       process.exit(0);
     });
-  }, 1000); // Give clients 1 second to receive shutdown message
-});
-
-process.on('SIGTERM', () => {
-  console.log('🛑 Received SIGTERM, shutting down gracefully...');
-  process.emit('SIGINT');
+  }, 1000);
 });
 
 console.log('✅ WebRTC Signaling Server ready!');
-console.log('📋 Available endpoints:');
-console.log('   - ws://localhost:8081');
-console.log('   - Message types: join, offer, answer, ice-candidate, chat, screen_share_state, ping');
-console.log('🔧 Features:');
-console.log('   - Reliable signaling fallback for chat');
-console.log('   - Automatic room cleanup');
-console.log('   - Connection monitoring');
-console.log('   - Graceful shutdown handling');

@@ -176,84 +176,86 @@ function ParticipantRoom({ room, onLeave }) {
     );
   };
 
-  // Enhanced WebSocket connection for AI analysis with reconnection logic
   const connectWebSocket = () => {
-    try {
-      if (wsRef.current) wsRef.current.close();
-      
-      const ws = new WebSocket(`${PYTHON_WS_URL}/ws`);
-      
-      ws.onopen = () => {
-        console.log("✅ Participant WebSocket connected to AI backend");
-        setAiConnected(true);
-        if (isCameraOn && mediaStream) {
-          if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
-          frameIntervalRef.current = setInterval(captureAndSendFrame, 1000);
-          console.log('🤖 AI frame capture started');
-        }
-      };
-      
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log("🤖 Participant AI Detection Data:", data);
-          
-          const enhancedData = {
-            faces: data.faces || 0,
-            eye_moves: data.eye_moves || 0,
-            face_alert: data.face_alert || "",
-            gender: data.gender || "Unknown",
-            mood: data.mood || "neutral",
-            bg_voice: data.bg_voice || false,
-            lipsync: data.lipsync || false,
-            verification: data.verification || "Not set",
-            speech: data.speech || false,
-            mouth_ratio: data.mouth_ratio || 0,
-            interview_active: data.interview_active || false
-          };
-          
-          if (currentSessionId && enhancedData.faces > 0) {
-            saveDetectionData(enhancedData);
-          }
-          
-          if (webrtcManagerRef.current && webrtcManagerRef.current.isDataChannelOpen('chat')) {
-            const aiData = {
-              type: 'ai_results',
-              data: enhancedData,
-              timestamp: new Date().toISOString()
-            };
-            webrtcManagerRef.current.sendData('chat', aiData);
-          }
-        } catch (err) {
-          console.error("❌ Error parsing WebSocket message:", err);
-        }
-      };
-      
-      ws.onclose = (event) => {
-        console.log("🔌 Participant WebSocket disconnected:", event.code, event.reason);
-        setAiConnected(false);
-        if (frameIntervalRef.current) {
-          clearInterval(frameIntervalRef.current);
-          frameIntervalRef.current = null;
+  try {
+    if (wsRef.current) wsRef.current.close();
+    
+    const wsUrl = `${PYTHON_WS_URL}/ws`;
+    console.log('🔗 Connecting to AI WebSocket:', wsUrl);
+    const ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+      console.log("✅ Participant WebSocket connected to AI backend");
+      setAiConnected(true);
+      if (isCameraOn && mediaStream) {
+        if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = setInterval(captureAndSendFrame, 1000);
+        console.log('🤖 AI frame capture started');
+      }
+    };
+    
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log("🤖 Participant AI Detection Data:", data);
+        
+        const enhancedData = {
+          faces: data.faces || 0,
+          eye_moves: data.eye_moves || 0,
+          face_alert: data.face_alert || "",
+          gender: data.gender || "Unknown",
+          mood: data.mood || "neutral",
+          bg_voice: data.bg_voice || false,
+          lipsync: data.lipsync || false,
+          verification: data.verification || "Not set",
+          speech: data.speech || false,
+          mouth_ratio: data.mouth_ratio || 0,
+          interview_active: data.interview_active || false
+        };
+        
+        if (currentSessionId && enhancedData.faces > 0) {
+          saveDetectionData(enhancedData);
         }
         
-        if (isCameraOn) {
-          console.log("🔄 Reconnecting to AI WebSocket in 3 seconds...");
-          setTimeout(() => connectWebSocket(), 3000);
+        if (webrtcManagerRef.current && webrtcManagerRef.current.isDataChannelOpen('chat')) {
+          const aiData = {
+            type: 'ai_results',
+            data: enhancedData,
+            timestamp: new Date().toISOString()
+          };
+          webrtcManagerRef.current.sendData('chat', aiData);
         }
-      };
-      
-      ws.onerror = (error) => {
-        console.error("❌ Participant WebSocket error:", error);
-        setAiConnected(false);
-      };
-
-      wsRef.current = ws;
-    } catch (err) {
-      console.error("❌ Participant WebSocket connection failed:", err);
+      } catch (err) {
+        console.error("❌ Error parsing WebSocket message:", err);
+      }
+    };
+    
+    ws.onclose = (event) => {
+      console.log("🔌 Participant WebSocket disconnected:", event.code, event.reason);
       setAiConnected(false);
-    }
-  };
+      if (frameIntervalRef.current) {
+        clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+      }
+      
+      if (isCameraOn) {
+        console.log("🔄 Reconnecting to AI WebSocket in 3 seconds...");
+        setTimeout(() => connectWebSocket(), 3000);
+      }
+    };
+    
+    ws.onerror = (error) => {
+      console.error("❌ Participant WebSocket error:", error);
+      console.error("WebSocket URL attempted:", wsUrl);
+      setAiConnected(false);
+    };
+
+    wsRef.current = ws;
+  } catch (err) {
+    console.error("❌ Participant WebSocket connection failed:", err);
+    setAiConnected(false);
+  }
+};
 
   // Enhanced camera start with proper sequencing
   const startCamera = async () => {
@@ -519,6 +521,7 @@ function ParticipantRoom({ room, onLeave }) {
 
       await fetch(`${NODE_API_URL}/api/detections/save`, {
         method: "POST",
+        credentials:'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: currentSessionId,

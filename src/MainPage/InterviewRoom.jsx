@@ -459,6 +459,7 @@ function InterviewRoom({ room, onLeave }) {
       try {
         const response = await fetch(`${PYTHON_API_URL}/start_interview`, {
           method: "POST",
+          credntials:'include',
           headers: { 'Content-Type': 'application/json' }
         });
         
@@ -492,6 +493,7 @@ function InterviewRoom({ room, onLeave }) {
       try {
         const response = await fetch(`${PYTHON_API_URL}/stop_interview`, {
           method: "POST",
+          credentials:'include',
           headers: { 'Content-Type': 'application/json' }
         });
         const result = await response.json();
@@ -836,6 +838,7 @@ function InterviewRoom({ room, onLeave }) {
           formData.append('image', blob, `reference_face_${Date.now()}.jpg`);
           const response = await fetch(`${PYTHON_API_URL}/set_reference_face`, {
             method: "POST",
+            credentials:'include',
             body: formData
           });
           if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);

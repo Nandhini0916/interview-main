@@ -2,7 +2,12 @@
 
 // Get signaling server URL from environment variable
 const getSignalingServerUrl = () => {
-  const url = import.meta.env.VITE_SIGNALING_URL || 'ws://localhost:8081';
+  // For production, use wss://, for local development use ws://
+  let url = import.meta.env.VITE_SIGNALING_URL;
+  if (!url) {
+    // Fallback for local development
+    url = 'ws://localhost:8081';
+  }
   console.log('🔗 Signaling server URL:', url);
   return url;
 };
