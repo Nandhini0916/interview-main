@@ -19,7 +19,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Interview Detection API", version="2.0.0")
 
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+# Get allowed origins from environment variable
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,https://interview-main-pink.vercel.app").split(",")
+
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -53,13 +56,13 @@ class AIDetector:
         self.face_count = 0
         self.face_alert = ""
         
-        # Gender detection (disabled - saves ~200MB)
+        # Gender detection (disabled - saves memory)
         self.latest_gender = "Not detected"
         
-        # Mood detection (simplified - saves ~300MB)
+        # Mood detection (simplified)
         self.current_mood = "neutral"
         
-        # Audio detection (disabled - saves memory and avoids portaudio issues)
+        # Audio detection (disabled - saves memory)
         self.speech_detected = False
         self.speech_confidence = 0.0
         self.bg_voice = False
@@ -257,7 +260,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.send_json(detection_data)
                 
     except WebSocketDisconnect:
-        active_connections.remove(websocket)
+        if websocket in active_connections:
+            active_connections.remove(websocket)
         logger.info(f"WebSocket disconnected. Remaining: {len(active_connections)}")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
@@ -305,3 +309,16 @@ async def root():
 @app.on_event("shutdown")
 async def shutdown_event():
     ai_detector.cleanup()
+
+# This is CRITICAL for Render deployment
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    print(f"🚀 Starting AI Interview Detection API on port {port}")
+    print(f"📍 Health check: http://0.0.0.0:{port}/health")
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=port,
+        log_level="info",
+        access_log=True
+    )
