@@ -86,6 +86,7 @@ const InterviewLandingPage = () => {
       try {
         const response = await fetch(`${API_BASE_URL}/api/rooms/create`, {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
           },
@@ -145,6 +146,7 @@ const InterviewLandingPage = () => {
       try {
         const response = await fetch(`${API_BASE_URL}/api/rooms/join`, {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
           },
@@ -197,6 +199,7 @@ const InterviewLandingPage = () => {
 
         const response = await fetch(`${API_BASE_URL}/api/auth/signup`, {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
           },
@@ -254,9 +257,8 @@ const InterviewLandingPage = () => {
     }
   };
 
-  // FIXED: Real Google Authentication
   const handleGoogleAuth = () => {
-    // Check if Google script is loaded
+  // Check if Google script is loaded
     if (!window.google) {
       alert('Google Sign-In is loading. Please try again in a moment.');
       return;
@@ -274,10 +276,13 @@ const InterviewLandingPage = () => {
             }
           });
           const userInfo = await userInfoResponse.json();
-          
+        
+          console.log('Google user info:', userInfo); // Debug log
+        
           // Send to backend
           const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
             method: 'POST',
+            credentials: 'include',
             headers: {
               'Content-Type': 'application/json',
             },
@@ -290,6 +295,7 @@ const InterviewLandingPage = () => {
           });
 
           const result = await response.json();
+          console.log('Backend response:', result); // Debug log
 
           if (result.success) {
             localStorage.setItem('interviewUser', JSON.stringify(result.user));
@@ -307,7 +313,7 @@ const InterviewLandingPage = () => {
         }
       },
     });
-    
+  
     client.requestAccessToken();
   };
 
