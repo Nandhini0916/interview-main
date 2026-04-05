@@ -52,7 +52,7 @@ function InterviewRoom({ room, onLeave }) {
   const frameIntervalRef = useRef(null);
   const webrtcManagerRef = useRef(null);
 
-  // VITE environment variables (updated from REACT_APP_)
+  // VITE environment variables
   const PYTHON_API_URL = import.meta.env.VITE_PYTHON_API_URL || 'http://localhost:8001';
   const NODE_API_URL = import.meta.env.VITE_NODE_API_URL || 'http://localhost:8000';
   const PYTHON_WS_URL = import.meta.env.VITE_PYTHON_WS_URL || 'ws://localhost:8001';
@@ -69,7 +69,6 @@ function InterviewRoom({ room, onLeave }) {
     console.log('================================================');
   }, []);
 
-  // Enhanced connection status management
   const updateConnectionStatus = (status) => {
     console.log(`🔗 Interviewer connection status updating to: ${status}`);
     setConnectionStatus(status);
@@ -85,27 +84,22 @@ function InterviewRoom({ room, onLeave }) {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  // Enhanced performance calculation
   const calculatePerformanceScore = (detectionData) => {
     let score = 50;
-    
     if (detectionData.faces === 1) score += 15;
     if (detectionData.eye_moves < 10) score += 10;
     if (detectionData.lipsync) score += 10;
     if (!detectionData.bg_voice) score += 5;
     if (detectionData.speech) score += 5;
     if (detectionData.mood === 'happy' || detectionData.mood === 'neutral') score += 5;
-    
     if (detectionData.faces === 0) score -= 20;
     if (detectionData.faces > 1) score -= 15;
     if (detectionData.eye_moves > 30) score -= 10;
     if (detectionData.face_alert) score -= 10;
     if (detectionData.bg_voice) score -= 10;
-    
     return Math.max(0, Math.min(100, score));
   };
 
-  // Enhanced message handling
   const handleWebRTCMessage = (data) => {
     console.log('📨 Received WebRTC message:', data.type, data.fromDataChannel ? '(data channel)' : '(signaling)');
     
@@ -115,22 +109,18 @@ function InterviewRoom({ room, onLeave }) {
           msg.id === data.id || 
           (msg.text === data.message && msg.sender === data.sender && Math.abs(new Date(msg.timestamp) - new Date(data.timestamp)) < 1000)
         );
-        
         if (!messageExists) {
           console.log('💬 Adding chat message:', data.message);
           addMessage(data.message, data.sender, data.timestamp, data.id);
         }
         break;
-        
       case 'screen_share_state':
         console.log('🖥️ Participant screen share state:', data.isSharing);
         setIsParticipantScreenSharing(data.isSharing);
         break;
-        
       case 'ai_results':
         console.log('🤖 AI results from participant:', data.data);
         break;
-        
       case 'data_channel_state':
         console.log('💬 Data channel state:', data.channel, data.state);
         if (data.channel === 'chat' && data.state === 'open') {
@@ -139,13 +129,11 @@ function InterviewRoom({ room, onLeave }) {
           setChatConnected(false);
         }
         break;
-        
       default:
         console.log('📨 Unknown message type:', data.type);
     }
   };
 
-  // Enhanced WebRTC initialization
   const initializeWebRTCManager = () => {
     const user = JSON.parse(localStorage.getItem('interviewUser'));
     const userId = user?.id || 'interviewer-' + Date.now();
@@ -159,7 +147,6 @@ function InterviewRoom({ room, onLeave }) {
       {
         onConnectionStateChange: (state) => {
           console.log('🔗 Interviewer WebRTC connection state:', state);
-          
           switch (state) {
             case 'connected':
               updateConnectionStatus("connected");
@@ -167,13 +154,11 @@ function InterviewRoom({ room, onLeave }) {
               setIsConnecting(false);
               console.log('✅ WebRTC connected with participant!');
               break;
-              
             case 'connecting':
               updateConnectionStatus("connecting");
               setIsConnecting(true);
               console.log('🔄 Connecting to participant...');
               break;
-              
             case 'disconnected':
             case 'failed':
               updateConnectionStatus("disconnected");
@@ -181,25 +166,20 @@ function InterviewRoom({ room, onLeave }) {
               setChatConnected(false);
               console.log('❌ WebRTC connection lost');
               break;
-              
             default:
               console.log('🔗 WebRTC state:', state);
           }
         },
-        
         onIceConnectionStateChange: (state) => {
           console.log('🧊 Interviewer ICE connection state:', state);
         },
-        
         onTrack: (event) => {
           console.log('🎥 Interviewer received remote track from participant:', event.track.kind, event.streams);
-          
           if (event.streams && event.streams.length > 0) {
             const remoteStream = event.streams[0];
             console.log('🔗 Setting participant stream:', remoteStream.id);
             setParticipantStream(remoteStream);
             setActiveParticipants(1);
-            
             const setupVideo = () => {
               if (participantVideoRef.current && remoteStream) {
                 participantVideoRef.current.srcObject = remoteStream;
@@ -209,29 +189,24 @@ function InterviewRoom({ room, onLeave }) {
                 });
               }
             };
-            
             setTimeout(setupVideo, 100);
           }
         },
-        
         onMessage: (data) => {
           console.log('📨 Interviewer received message:', data.type);
           handleWebRTCMessage(data);
         },
-        
         onDataChannel: (channel) => {
           console.log('💬 Data channel created:', channel.label);
           if (channel.label === 'chat') {
             setChatConnected(true);
           }
         },
-        
         onParticipantJoined: (data) => {
           console.log('👤 Participant joined room:', data.participantId);
           setActiveParticipants(1);
           setIsConnecting(true);
           updateConnectionStatus("connecting");
-          
           setTimeout(async () => {
             if (webrtcManagerRef.current) {
               console.log('🎯 Creating offer for participant...');
@@ -239,18 +214,15 @@ function InterviewRoom({ room, onLeave }) {
             }
           }, 1000);
         },
-        
         onOpen: () => {
           console.log('✅ Interviewer signaling connected');
           setSignalingConnected(true);
         },
-        
         onClose: () => {
           console.log('🔌 Interviewer signaling closed');
           setSignalingConnected(false);
           setChatConnected(false);
         },
-        
         onError: (error) => {
           console.error('❌ Interviewer WebRTC error:', error);
           updateConnectionStatus("error");
@@ -260,29 +232,46 @@ function InterviewRoom({ room, onLeave }) {
     );
   };
 
-  // Enhanced WebSocket connection
+  // FIXED: Enhanced WebSocket connection with better error handling
   const connectWebSocket = () => {
     try {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        console.log('WebSocket already connected');
+        return;
+      }
+      
       if (wsRef.current) {
         wsRef.current.close();
       }
       
-      const ws = new WebSocket(`${PYTHON_WS_URL}/ws`);
+      const wsUrl = `${PYTHON_WS_URL}/ws`;
+      console.log('🔗 Connecting to AI WebSocket:', wsUrl);
+      
+      const ws = new WebSocket(wsUrl);
       
       ws.onopen = () => {
         console.log("✅ Interviewer connected to AI WebSocket");
         setAiConnected(true);
         
+        // Start sending frames once connected and participant video is ready
         if (participantVideoRef.current && interviewStatus === "active") {
           if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
           frameIntervalRef.current = setInterval(captureAndSendFrame, 1000);
+          console.log('🤖 Started sending frames to AI');
         }
       };
       
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log("🤖 Interviewer AI Analysis Data:", data);
+          
+          // Handle ping messages
+          if (data.type === 'ping') {
+            console.log('💓 Received ping from AI server');
+            return;
+          }
+          
+          console.log("🤖 AI Analysis Data received:", data);
           
           const enhancedData = {
             faces: data.faces || 0,
@@ -309,7 +298,7 @@ function InterviewRoom({ room, onLeave }) {
       };
       
       ws.onclose = (event) => {
-        console.log("🔌 Interviewer AI WebSocket disconnected:", event.code, event.reason);
+        console.log("🔌 AI WebSocket disconnected:", event.code, event.reason);
         setAiConnected(false);
         
         if (frameIntervalRef.current) {
@@ -317,6 +306,7 @@ function InterviewRoom({ room, onLeave }) {
           frameIntervalRef.current = null;
         }
         
+        // Attempt to reconnect if interview is active
         if (interviewStatus === "active") {
           console.log("🔄 Reconnecting to AI WebSocket in 3 seconds...");
           setTimeout(() => connectWebSocket(), 3000);
@@ -324,18 +314,17 @@ function InterviewRoom({ room, onLeave }) {
       };
       
       ws.onerror = (error) => {
-        console.error("❌ Interviewer AI WebSocket error:", error);
+        console.error("❌ AI WebSocket error:", error);
         setAiConnected(false);
       };
       
       wsRef.current = ws;
     } catch (err) {
-      console.error("❌ Interviewer WebSocket connection failed:", err);
+      console.error("❌ WebSocket connection failed:", err);
       setAiConnected(false);
     }
   };
 
-  // Enhanced camera start
   const startCamera = async () => {
     try {
       console.log('🎥 Interviewer starting camera...');
@@ -374,10 +363,7 @@ function InterviewRoom({ room, onLeave }) {
       if (webrtcManagerRef.current) {
         await webrtcManagerRef.current.connect();
         await webrtcManagerRef.current.setLocalStream(stream);
-        
-        webrtcManagerRef.current.createDataChannel('chat', {
-          ordered: true
-        });
+        webrtcManagerRef.current.createDataChannel('chat', { ordered: true });
       }
       
       await createSession();
@@ -392,7 +378,6 @@ function InterviewRoom({ room, onLeave }) {
     }
   };
 
-  // Enhanced cleanup
   const stopCamera = () => {
     console.log('🛑 Interviewer stopping camera...');
     
@@ -439,7 +424,6 @@ function InterviewRoom({ room, onLeave }) {
     console.log('✅ Interviewer camera stopped');
   };
 
-  // Enhanced interview start
   const startInterview = async () => {
     try {
       console.log('🎬 Interviewer starting interview process...');
@@ -454,12 +438,14 @@ function InterviewRoom({ room, onLeave }) {
         return;
       }
       
+      // Connect to AI WebSocket
       connectWebSocket();
       
+      // Notify Python backend
       try {
         const response = await fetch(`${PYTHON_API_URL}/start_interview`, {
           method: "POST",
-          credntials:'include',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' }
         });
         
@@ -484,7 +470,6 @@ function InterviewRoom({ room, onLeave }) {
     }
   };
 
-  // Enhanced interview stop
   const stopInterview = async () => {
     try {
       console.log('🛑 Interviewer stopping interview...');
@@ -493,7 +478,7 @@ function InterviewRoom({ room, onLeave }) {
       try {
         const response = await fetch(`${PYTHON_API_URL}/stop_interview`, {
           method: "POST",
-          credentials:'include',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' }
         });
         const result = await response.json();
@@ -511,6 +496,7 @@ function InterviewRoom({ room, onLeave }) {
         try {
           await fetch(`${NODE_API_URL}/api/detections/session/end`, {
             method: "POST",
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessionId: currentSessionId })
           });
@@ -526,49 +512,49 @@ function InterviewRoom({ room, onLeave }) {
     }
   };
 
-  // Create session with proper error handling
   const createSession = async () => {
-  try {
-    const user = JSON.parse(localStorage.getItem('interviewUser'));
-    if (!user) {
-      console.error('No user found');
+    try {
+      const user = JSON.parse(localStorage.getItem('interviewUser'));
+      if (!user) {
+        console.error('No user found');
+        return null;
+      }
+      
+      const sessionId = `session-${room.id}-interviewer-${Date.now()}`;
+      const response = await fetch(`${NODE_API_URL}/api/detections/session/start`, {
+        method: "POST",
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: sessionId,
+          roomId: room.id,
+          userId: user.id,
+          userType: 'interviewer'
+        })
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        console.log('✅ Interviewer session created:', sessionId);
+        setCurrentSessionId(sessionId);
+        setSessionStartTime(new Date());
+        return sessionId;
+      } else {
+        console.error('❌ Failed to create interviewer session:', result.message);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Error creating interviewer session:', error);
       return null;
     }
-    
-    const sessionId = `session-${room.id}-interviewer-${Date.now()}`;
-    const response = await fetch(`${NODE_API_URL}/api/detections/session/start`, {
-      method: "POST",
-      credentials: 'include',  // ADD THIS
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: sessionId,
-        roomId: room.id,
-        userId: user.id,
-        userType: 'interviewer'
-      })
-    });
-    
-    const result = await response.json();
-    if (result.success) {
-      console.log('✅ Interviewer session created:', sessionId);
-      setCurrentSessionId(sessionId);
-      setSessionStartTime(new Date());
-      return sessionId;
-    } else {
-      console.error('❌ Failed to create interviewer session:', result.message);
-      return null;
-    }
-  } catch (error) {
-    console.error('❌ Error creating interviewer session:', error);
-    return null;
-  }
-};
+  };
 
   const saveDetectionData = async (detectionData) => {
     try {
       if (!currentSessionId) return;
       await fetch(`${NODE_API_URL}/api/detections/save`, {
         method: "POST",
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: currentSessionId,
@@ -583,18 +569,44 @@ function InterviewRoom({ room, onLeave }) {
     }
   };
 
+  // FIXED: Enhanced frame capture with better logging
   const captureAndSendFrame = () => {
-    if (!participantVideoRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!participantVideoRef.current) {
+      console.log('No participant video reference');
+      return;
+    }
+    
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.log('WebSocket not open, state:', wsRef.current?.readyState);
+      return;
+    }
+    
     try {
       const video = participantVideoRef.current;
-      if (video.videoWidth === 0 || video.videoHeight === 0 || video.readyState !== 4) return;
-      if (!canvasRef.current) canvasRef.current = document.createElement('canvas');
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        console.log('Video dimensions not ready');
+        return;
+      }
+      
+      if (video.readyState !== 4) {
+        console.log('Video not ready, readyState:', video.readyState);
+        return;
+      }
+      
+      if (!canvasRef.current) {
+        canvasRef.current = document.createElement('canvas');
+      }
+      
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
+      
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = canvas.toDataURL('image/jpeg', 0.8);
+      
+      // Compress image to reduce payload size
+      const imageData = canvas.toDataURL('image/jpeg', 0.7);
+      
       if (wsRef.current.readyState === WebSocket.OPEN) {
         const frameData = {
           type: 'participant_frame',
@@ -604,6 +616,7 @@ function InterviewRoom({ room, onLeave }) {
           sessionId: currentSessionId
         };
         wsRef.current.send(JSON.stringify(frameData));
+        console.log('📤 Frame sent to AI at:', new Date().toISOString());
       }
     } catch (error) {
       console.error('Error capturing frame:', error);
@@ -693,7 +706,6 @@ function InterviewRoom({ room, onLeave }) {
     if (!isScreenSharing) {
       try {
         console.log('🖥️ Interviewer starting screen share...');
-        
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: {
             cursor: "always",
@@ -710,41 +722,28 @@ function InterviewRoom({ room, onLeave }) {
             channelCount: 2
           }
         });
-
-        console.log('Interviewer screen stream obtained with tracks:', 
-          screenStream.getVideoTracks().length, 'video,',
-          screenStream.getAudioTracks().length, 'audio'
-        );
-
         setScreenStream(screenStream);
-        
         if (videoRef.current) {
           videoRef.current.srcObject = screenStream;
           videoRef.current.classList.remove('mirror-effect');
           videoRef.current.play().catch(console.warn);
         }
-
         setIsScreenSharing(true);
-        
         if (webrtcManagerRef.current) {
           const videoTrack = screenStream.getVideoTracks()[0];
           if (videoTrack) {
             await webrtcManagerRef.current.replaceVideoTrack(videoTrack);
           }
-          
           const audioTrack = screenStream.getAudioTracks()[0];
           if (audioTrack) {
             await webrtcManagerRef.current.replaceAudioTrack(audioTrack);
           }
-          
           webrtcManagerRef.current.sendScreenShareState(true);
         }
-
         screenStream.getVideoTracks()[0].onended = () => {
           console.log('Screen share track ended by user');
           stopScreenShare();
         };
-
         console.log('✅ Interviewer screen sharing started successfully');
       } catch (err) {
         console.error("❌ Interviewer error sharing screen:", err);
@@ -760,7 +759,6 @@ function InterviewRoom({ room, onLeave }) {
 
   const stopScreenShare = () => {
     console.log('🛑 Interviewer stopping screen share...');
-    
     if (screenStream) {
       screenStream.getTracks().forEach(track => {
         track.stop();
@@ -768,29 +766,23 @@ function InterviewRoom({ room, onLeave }) {
       });
       setScreenStream(null);
     }
-    
     if (videoRef.current && mediaStream) {
       videoRef.current.srcObject = mediaStream;
       videoRef.current.classList.add('mirror-effect');
       videoRef.current.play().catch(console.warn);
     }
-    
     setIsScreenSharing(false);
-    
     if (webrtcManagerRef.current && mediaStream) {
       const videoTrack = mediaStream.getVideoTracks()[0];
       if (videoTrack) {
         webrtcManagerRef.current.replaceVideoTrack(videoTrack);
       }
-      
       const audioTrack = mediaStream.getAudioTracks()[0];
       if (audioTrack) {
         webrtcManagerRef.current.replaceAudioTrack(audioTrack);
       }
-      
       webrtcManagerRef.current.sendScreenShareState(false);
     }
-    
     console.log('✅ Interviewer screen share stopped');
   };
 
@@ -807,63 +799,60 @@ function InterviewRoom({ room, onLeave }) {
   };
 
   const captureReferenceFace = async () => {
-  if (!participantVideoRef.current) {
-    alert("No participant video available.");
-    return;
-  }
-  
-  try {
-    setCapturingReference(true);
-    const video = participantVideoRef.current;
-    
-    if (video.videoWidth === 0 || video.videoHeight === 0) {
-      alert("Participant video not ready. Please wait a moment.");
-      setCapturingReference(false);
+    if (!participantVideoRef.current) {
+      alert("No participant video available.");
       return;
     }
     
-    // Wait a moment for the video to stabilize
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Convert canvas to blob and send as base64
-    const imageData = canvas.toDataURL('image/jpeg', 0.9);
-    
-    // Send to Python backend
-    const response = await fetch(`${PYTHON_API_URL}/set_reference_face`, {
-      method: "POST",
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ image: imageData })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    try {
+      setCapturingReference(true);
+      const video = participantVideoRef.current;
+      
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        alert("Participant video not ready. Please wait a moment.");
+        setCapturingReference(false);
+        return;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      const imageData = canvas.toDataURL('image/jpeg', 0.9);
+      
+      const response = await fetch(`${PYTHON_API_URL}/set_reference_face`, {
+        method: "POST",
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ image: imageData })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      console.log('Reference face capture result:', result);
+      
+      if (result.status === "success") {
+        setReferenceFaceSet(true);
+        alert('✅ Reference face captured successfully!');
+      } else {
+        alert(result.message || 'No face detected. Please ensure the participant\'s face is clearly visible.');
+      }
+    } catch (error) {
+      console.error('Error capturing reference face:', error);
+      alert(`Error capturing reference face: ${error.message}`);
+    } finally {
+      setCapturingReference(false);
     }
-    
-    const result = await response.json();
-    console.log('Reference face capture result:', result);
-    
-    if (result.status === "success") {
-      setReferenceFaceSet(true);
-      alert('✅ Reference face captured successfully!');
-    } else {
-      alert(result.message || 'No face detected. Please ensure the participant\'s face is clearly visible.');
-    }
-  } catch (error) {
-    console.error('Error capturing reference face:', error);
-    alert(`Error capturing reference face: ${error.message}`);
-  } finally {
-    setCapturingReference(false);
-  }
-};
+  };
 
   const generateFinalReport = async () => {
     if (!currentSessionId) {
@@ -878,6 +867,7 @@ function InterviewRoom({ room, onLeave }) {
       
       const response = await fetch(`${NODE_API_URL}/api/detections/generate-report`, {
         method: "POST",
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: currentSessionId,
@@ -917,6 +907,7 @@ function InterviewRoom({ room, onLeave }) {
     try {
       const response = await fetch(`${NODE_API_URL}/api/detections/download-report`, {
         method: "POST",
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: currentSessionId,
@@ -950,6 +941,7 @@ function InterviewRoom({ room, onLeave }) {
     try {
       const response = await fetch(`${NODE_API_URL}/api/detections/share-report`, {
         method: "POST",
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: currentSessionId,
@@ -981,99 +973,85 @@ function InterviewRoom({ room, onLeave }) {
   };
 
   const handleLeaveMeeting = async () => {
-  console.log("🚪 handleLeaveMeeting called in InterviewRoom");
-  
-  try {
-    if (interviewStatus === "active") {
-      await stopInterview();
-    } else if (currentSessionId) {
-      await generateFinalReport();
+    console.log("🚪 handleLeaveMeeting called in InterviewRoom");
+    
+    try {
+      if (interviewStatus === "active") {
+        await stopInterview();
+      } else if (currentSessionId) {
+        await generateFinalReport();
+      }
+    } catch (error) {
+      console.error("Error during cleanup:", error);
     }
-  } catch (error) {
-    console.error("Error during cleanup:", error);
-  }
-  
-  // Stop all media streams
-  if (mediaStream) {
-    mediaStream.getTracks().forEach(track => {
-      track.stop();
-      track.enabled = false;
+    
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => track.stop());
+      setMediaStream(null);
+    }
+    
+    if (screenStream) {
+      screenStream.getTracks().forEach(track => track.stop());
+      setScreenStream(null);
+    }
+    
+    if (webrtcManagerRef.current) {
+      webrtcManagerRef.current.close();
+      webrtcManagerRef.current = null;
+    }
+    
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    
+    setChatConnected(false);
+    setAiConnected(false);
+    setSignalingConnected(false);
+    setIsConnecting(false);
+    setCurrentSessionId(null);
+    setSessionStartTime(null);
+    setMessages([]);
+    setParticipantStream(null);
+    setActiveParticipants(0);
+    setConnectionStatus("disconnected");
+    setInterviewStatus("not_started");
+    setReferenceFaceSet(false);
+    
+    setAiResults({
+      faces: 0,
+      eye_moves: 0,
+      face_alert: "",
+      gender: "Unknown",
+      mood: "neutral",
+      bg_voice: false,
+      lipsync: false,
+      verification: "Not set",
+      speech: false,
+      mouth_ratio: 0,
+      interview_active: false
     });
-    setMediaStream(null);
-  }
-  
-  if (screenStream) {
-    screenStream.getTracks().forEach(track => {
-      track.stop();
-      track.enabled = false;
-    });
-    setScreenStream(null);
-  }
-  
-  // Close WebRTC connection
-  if (webrtcManagerRef.current) {
-    webrtcManagerRef.current.close();
-    webrtcManagerRef.current = null;
-  }
-  
-  // Close WebSocket
-  if (wsRef.current) {
-    wsRef.current.close();
-    wsRef.current = null;
-  }
-  
-  // Clear all state
-  setChatConnected(false);
-  setAiConnected(false);
-  setSignalingConnected(false);
-  setIsConnecting(false);
-  setCurrentSessionId(null);
-  setSessionStartTime(null);
-  setMessages([]);
-  setParticipantStream(null);
-  setActiveParticipants(0);
-  setConnectionStatus("disconnected");
-  setInterviewStatus("not_started");
-  setReferenceFaceSet(false);
-  
-  // Clear AI results
-  setAiResults({
-    faces: 0,
-    eye_moves: 0,
-    face_alert: "",
-    gender: "Unknown",
-    mood: "neutral",
-    bg_voice: false,
-    lipsync: false,
-    verification: "Not set",
-    speech: false,
-    mouth_ratio: 0,
-    interview_active: false
-  });
-  
-  // Clear video elements
-  if (videoRef.current) {
-    videoRef.current.srcObject = null;
-  }
-  if (participantVideoRef.current) {
-    participantVideoRef.current.srcObject = null;
-  }
-  
-  console.log("✅ Cleanup complete, calling onLeave");
-  
-  // Call the onLeave callback to navigate back
-  if (onLeave) {
-    onLeave();
-  } else {
-    console.error("❌ onLeave callback is not defined!");
-  }
-};
+    
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    if (participantVideoRef.current) {
+      participantVideoRef.current.srcObject = null;
+    }
+    
+    console.log("✅ Cleanup complete, calling onLeave");
+    
+    if (onLeave) {
+      onLeave();
+    } else {
+      console.error("❌ onLeave callback is not defined!");
+    }
+  };
 
   useEffect(() => {
     if (participantStream && participantVideoRef.current) {
       console.log('🎬 Setting up participant video element with stream');
       participantVideoRef.current.srcObject = participantStream;
-      
       const playVideo = () => {
         if (participantVideoRef.current) {
           participantVideoRef.current.play().catch(error => {
@@ -1082,7 +1060,6 @@ function InterviewRoom({ room, onLeave }) {
           });
         }
       };
-      
       playVideo();
     }
   }, [participantStream]);
@@ -1097,22 +1074,29 @@ function InterviewRoom({ room, onLeave }) {
     if (showChat) setUnreadMessages(0);
   }, [showChat]);
 
+  // FIXED: Start sending frames when participant video is ready and AI is connected
   useEffect(() => {
     if (isParticipantVideoReady() && aiConnected && interviewStatus === "active") {
+      console.log('🎬 Participant video ready, starting frame capture');
       if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
       frameIntervalRef.current = setInterval(captureAndSendFrame, 1000);
+    } else {
+      if (frameIntervalRef.current) {
+        clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+      }
     }
     
     return () => {
       if (frameIntervalRef.current) {
         clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
       }
     };
   }, [isParticipantVideoReady(), aiConnected, interviewStatus]);
 
   useEffect(() => {
     console.log('🏠 InterviewRoom mounted');
-    
     return () => {
       console.log('🧹 InterviewRoom cleanup');
       stopCamera();
