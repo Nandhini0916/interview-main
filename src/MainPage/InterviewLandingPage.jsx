@@ -25,6 +25,7 @@ const InterviewLandingPage = () => {
     lastName: ''
   });
 
+  // IMPORTANT: API_BASE_URL should NOT include /api at the end
   const API_BASE_URL = process.env.REACT_APP_NODE_API_URL || 'http://localhost:8000';
 
   // Load user data from localStorage on component mount
@@ -253,61 +254,62 @@ const InterviewLandingPage = () => {
     }
   };
 
+  // FIXED: Real Google Authentication
   const handleGoogleAuth = () => {
-  // Check if Google script is loaded
-  if (!window.google) {
-    alert('Google Sign-In is loading. Please try again in a moment.');
-    return;
-  }
+    // Check if Google script is loaded
+    if (!window.google) {
+      alert('Google Sign-In is loading. Please try again in a moment.');
+      return;
+    }
 
-  const client = window.google.accounts.oauth2.initTokenClient({
-    client_id: process.env.REACT_APP_GOOGLE_CLIENT_ID || '1021826661780-p60tmmnr1gc2q5rlg5h9na359kvfg6li.apps.googleusercontent.com',
-    scope: 'email profile openid',
-    callback: async (tokenResponse) => {
-      try {
-        // Fetch user info using the access token
-        const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: {
-            'Authorization': `Bearer ${tokenResponse.access_token}`
+    const client = window.google.accounts.oauth2.initTokenClient({
+      client_id: process.env.REACT_APP_GOOGLE_CLIENT_ID,
+      scope: 'email profile openid',
+      callback: async (tokenResponse) => {
+        try {
+          // Fetch user info using the access token
+          const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: {
+              'Authorization': `Bearer ${tokenResponse.access_token}`
+            }
+          });
+          const userInfo = await userInfoResponse.json();
+          
+          // Send to backend
+          const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email: userInfo.email,
+              firstName: userInfo.given_name || 'Google',
+              lastName: userInfo.family_name || 'User',
+              googleId: userInfo.sub
+            })
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            localStorage.setItem('interviewUser', JSON.stringify(result.user));
+            localStorage.setItem('authToken', result.token);
+            setUser(result.user);
+            setShowAuthOverlay(false);
+            setShowProfileMenu(false);
+            alert('Successfully authenticated with Google!');
+          } else {
+            alert(result.message || 'Google authentication failed');
           }
-        });
-        const userInfo = await userInfoResponse.json();
-        
-        // Send to your backend
-        const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: userInfo.email,
-            firstName: userInfo.given_name || 'Google',
-            lastName: userInfo.family_name || 'User',
-            googleId: userInfo.sub
-          })
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-          localStorage.setItem('interviewUser', JSON.stringify(result.user));
-          localStorage.setItem('authToken', result.token);
-          setUser(result.user);
-          setShowAuthOverlay(false);
-          setShowProfileMenu(false);
-          alert('Successfully authenticated with Google!');
-        } else {
-          alert(result.message || 'Google authentication failed');
+        } catch (error) {
+          console.error('Google auth error:', error);
+          alert('Google authentication failed. Please try again.');
         }
-      } catch (error) {
-        console.error('Google auth error:', error);
-        alert('Google authentication failed. Please try again.');
-      }
-    },
-  });
-  
-  client.requestAccessToken();
-};
+      },
+    });
+    
+    client.requestAccessToken();
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('interviewUser');
@@ -352,7 +354,7 @@ const InterviewLandingPage = () => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            userId: user.id
+            userId: user?.id
           })
         });
 
