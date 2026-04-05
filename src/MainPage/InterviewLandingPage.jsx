@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FaKeyboard, FaUser, FaGoogle, FaTimes, FaSignInAlt, FaUserPlus, FaSignOutAlt, FaLock } from 'react-icons/fa';
 import { useGoogleLogin } from '@react-oauth/google'
-import { jwtDecode } from 'jwt-decode'
 import InterviewRoom from './InterviewRoom';
 import ParticipantRoom from './ParticipantRoom';
 import './InterviewLandingPage.css';
@@ -272,23 +271,32 @@ const handleGoogleAuth = useGoogleLogin({
     console.log('Google login success:', tokenResponse)
     
     try {
-      // Decode the credential to get user info
-      const decoded = jwtDecode(tokenResponse.credential)
-      console.log('Decoded user:', decoded)
+      // Get the access token from the response
+      const accessToken = tokenResponse.access_token
       
+      // Fetch user info from Google's API using the access token
+      const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      })
+      
+      const userInfo = await userInfoResponse.json()
+      console.log('Google user info:', userInfo)
+      
+      // Send the user info to your backend (NOT the token!)
       const apiUrl = import.meta.env.VITE_NODE_API_URL || 'http://localhost:8000'
       
-      // Send to your backend
       const response = await fetch(`${apiUrl}/api/auth/google`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          email: decoded.email,
-          firstName: decoded.given_name || 'Google',
-          lastName: decoded.family_name || 'User',
-          googleId: decoded.sub
+          email: userInfo.email,
+          firstName: userInfo.given_name || 'Google',
+          lastName: userInfo.family_name || 'User',
+          googleId: userInfo.sub
         })
       })
       
@@ -314,7 +322,7 @@ const handleGoogleAuth = useGoogleLogin({
     console.error('Google login failed:', error)
     alert('Google login failed. Please try again.')
   },
-  flow: 'auth-code', // Use auth-code flow for better security[citation:9]
+  flow: 'implicit', // This returns access_token directly
 })
 
   const handleLogout = () => {
