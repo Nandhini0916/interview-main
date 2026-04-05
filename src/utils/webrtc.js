@@ -1,4 +1,12 @@
 // src/utils/webrtc.js
+
+// Get signaling server URL from environment variable
+const getSignalingServerUrl = () => {
+  const url = import.meta.env.VITE_SIGNALING_URL || 'ws://localhost:8081';
+  console.log('🔗 Signaling server URL:', url);
+  return url;
+};
+
 export class WebRTCSignaling {
   constructor(roomId, userId, role, options = {}) {
     this.roomId = roomId;
@@ -53,7 +61,8 @@ export class WebRTCSignaling {
       try {
         if (this.ws) this.ws.close();
         
-        const wsUrl = `ws://localhost:8081`;
+        // FIXED: Use environment variable for signaling server URL
+        const wsUrl = getSignalingServerUrl();
         console.log(`🔗 ${this.role} connecting to signaling: ${wsUrl}`);
         this.ws = new WebSocket(wsUrl);
         
@@ -89,7 +98,6 @@ export class WebRTCSignaling {
             const data = JSON.parse(event.data);
             console.log(`📨 ${this.role} received signaling:`, data.type, data);
             this.handleSignalingMessage(data);
-            // Don't call onMessage here - let handleSignalingMessage handle it
           } catch (error) {
             console.error('❌ Error parsing signaling message:', error);
             this.onError(error);
@@ -176,7 +184,6 @@ export class WebRTCSignaling {
           
         case 'chat':
           console.log('💬 Chat message from signaling:', data.sender, data.message);
-          // FIXED: Always handle chat messages from signaling as fallback
           data.fromSignaling = true;
           this.onMessage(data);
           break;
@@ -211,7 +218,6 @@ export class WebRTCSignaling {
     }
   }
   
-  // FIXED: Enhanced offer handling with data channel creation
   async handleOffer(offer) {
     if (!this.peerConnection) {
       console.log('🚀 Creating peer connection for offer handling');
@@ -223,7 +229,6 @@ export class WebRTCSignaling {
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
       console.log('✅ Remote description set from offer');
       
-      // FIXED: Create data channel when handling offer (for participants)
       if (this.role === 'participant' && !this.dataChannels.has('chat')) {
         console.log('💬 Participant creating data channel in response to offer');
         this.createDataChannel('chat', { ordered: true });
@@ -275,7 +280,6 @@ export class WebRTCSignaling {
       console.log('✅ ICE candidate added');
     } catch (error) {
       console.error('❌ Error adding ICE candidate:', error);
-      // Don't treat this as a fatal error
     }
   }
   
@@ -302,10 +306,8 @@ export class WebRTCSignaling {
     }
   }
   
-  // FIXED: Enhanced peer connection creation with data channel setup
   async createPeerConnection() {
     try {
-      // Close existing connection if any
       if (this.peerConnection) {
         this.peerConnection.close();
       }
@@ -322,13 +324,11 @@ export class WebRTCSignaling {
       
       this.setupPeerConnectionEventHandlers();
       
-      // FIXED: Create data channel immediately for interviewer
       if (this.role === 'interviewer' && !this.dataChannels.has('chat')) {
         console.log('💬 Interviewer creating data channel');
         this.createDataChannel('chat', { ordered: true });
       }
       
-      // Add local stream if available
       if (this.localStream) {
         this.addStream(this.localStream);
       }
@@ -341,7 +341,6 @@ export class WebRTCSignaling {
     }
   }
   
-  // FIXED: Enhanced event handlers with better data channel management
   setupPeerConnectionEventHandlers() {
     if (!this.peerConnection) return;
     
@@ -396,7 +395,6 @@ export class WebRTCSignaling {
       }
     };
     
-    // FIXED: Enhanced track handling
     this.peerConnection.ontrack = (event) => {
       console.log(`🎥 ${this.role} received remote track:`, event.track.kind, event.streams);
       
@@ -419,13 +417,11 @@ export class WebRTCSignaling {
     };
   }
   
-  // FIXED: Enhanced data channel setup with better state management
   setupDataChannel(channel) {
     this.dataChannels.set(channel.label, channel);
     
     channel.onopen = () => {
       console.log(`✅ ${this.role} data channel opened:`, channel.label);
-      // Notify about data channel state change
       if (channel.label === 'chat') {
         this.onMessage({ 
           type: 'data_channel_state', 
@@ -440,7 +436,6 @@ export class WebRTCSignaling {
       console.log(`💬 ${this.role} data channel message received:`, event.data);
       try {
         const data = JSON.parse(event.data);
-        // Mark data as coming from data channel to prevent duplicates
         data.fromDataChannel = true;
         data.channel = channel.label;
         this.onMessage(data);
@@ -459,7 +454,6 @@ export class WebRTCSignaling {
       console.log(`🔌 ${this.role} data channel closed:`, channel.label);
       this.dataChannels.delete(channel.label);
       
-      // Notify about data channel state change
       if (channel.label === 'chat') {
         this.onMessage({ 
           type: 'data_channel_state', 
@@ -476,7 +470,6 @@ export class WebRTCSignaling {
     };
   }
   
-  // FIXED: Enhanced offer creation with data channel
   async createOffer() {
     if (!this.peerConnection) {
       console.log('🚀 Creating peer connection for offer');
@@ -506,20 +499,15 @@ export class WebRTCSignaling {
     }
   }
   
-  // FIXED: Enhanced local stream management
   async setLocalStream(stream) {
     this.localStream = stream;
     
     if (this.peerConnection && stream) {
       try {
-        // Get current senders
         const senders = this.peerConnection.getSenders();
-        
-        // Remove existing tracks of the same kind
         const newVideoTrack = stream.getVideoTracks()[0];
         const newAudioTrack = stream.getAudioTracks()[0];
         
-        // Replace video track if available
         if (newVideoTrack) {
           const videoSender = senders.find(s => s.track && s.track.kind === 'video');
           if (videoSender) {
@@ -531,7 +519,6 @@ export class WebRTCSignaling {
           }
         }
         
-        // Replace audio track if available
         if (newAudioTrack) {
           const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
           if (audioSender) {
@@ -546,9 +533,7 @@ export class WebRTCSignaling {
         console.log('✅ Local stream set with', stream.getTracks().length, 'tracks');
       } catch (error) {
         console.error('❌ Error setting local stream:', error);
-        // Fallback to adding tracks normally
         try {
-          // Remove all existing tracks first
           const senders = this.peerConnection.getSenders();
           senders.forEach(sender => {
             if (sender.track) {
@@ -556,7 +541,6 @@ export class WebRTCSignaling {
             }
           });
           
-          // Add new tracks
           stream.getTracks().forEach(track => {
             this.peerConnection.addTrack(track, stream);
           });
@@ -627,7 +611,6 @@ export class WebRTCSignaling {
     }
   }
   
-  // FIXED: Enhanced chat message sending with better fallback logic
   sendChatMessage(messageText, messageId = null) {
     const messageIdToUse = messageId || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const timestamp = new Date().toISOString();
@@ -643,7 +626,6 @@ export class WebRTCSignaling {
 
     console.log(`📤 ${this.role} attempting to send chat message:`, messageText);
     
-    // Try data channel first for better performance
     if (this.isDataChannelOpen('chat')) {
       console.log('💬 Using data channel for chat message');
       const success = this.sendData('chat', chatData);
@@ -652,7 +634,6 @@ export class WebRTCSignaling {
       }
     }
     
-    // Fallback to signaling
     console.log('🔄 Falling back to signaling for chat message');
     return this.sendSignalingMessage({
       type: 'chat',
@@ -672,11 +653,9 @@ export class WebRTCSignaling {
       fromDataChannel: true
     };
 
-    // Try data channel first
     if (this.isDataChannelOpen('chat')) {
       return this.sendData('chat', screenData);
     } else {
-      // Fallback to signaling
       return this.sendSignalingMessage({
         type: 'screen_share_state',
         isSharing: isSharing,
@@ -712,13 +691,11 @@ export class WebRTCSignaling {
   close() {
     console.log(`🛑 Closing ${this.role} WebRTC...`);
     
-    // Clear reconnect timeout
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
     
-    // Close data channels
     this.dataChannels.forEach(channel => {
       try {
         channel.close();
@@ -728,7 +705,6 @@ export class WebRTCSignaling {
     });
     this.dataChannels.clear();
     
-    // Close peer connection
     if (this.peerConnection) {
       try {
         this.peerConnection.close();
@@ -738,7 +714,6 @@ export class WebRTCSignaling {
       this.peerConnection = null;
     }
     
-    // Close WebSocket
     if (this.ws) {
       try {
         this.ws.close();
@@ -748,7 +723,6 @@ export class WebRTCSignaling {
       this.ws = null;
     }
     
-    // Stop local stream
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => {
         track.stop();
@@ -756,7 +730,6 @@ export class WebRTCSignaling {
       });
     }
     
-    // Reset state
     this.isConnected = false;
     this.isConnecting = false;
     this.hasJoinedRoom = false;
@@ -765,7 +738,6 @@ export class WebRTCSignaling {
     console.log(`✅ ${this.role} WebRTC closed`);
   }
   
-  // Utility methods
   getConnectionState() {
     return this.peerConnection ? this.peerConnection.connectionState : 'disconnected';
   }
@@ -783,7 +755,6 @@ export class WebRTCSignaling {
     return channel ? channel.readyState === 'open' : false;
   }
   
-  // Enhanced stream management methods
   async replaceVideoTrack(newVideoTrack) {
     if (!this.peerConnection || !newVideoTrack) return false;
     
@@ -827,7 +798,6 @@ export const createWebRTCManager = (roomId, userId, role, options = {}) => {
   return new WebRTCSignaling(roomId, userId, role, options);
 };
 
-// Helper function to create default configuration
 export const createDefaultWebRTCManager = (roomId, userId, role, eventHandlers = {}) => {
   return createWebRTCManager(roomId, userId, role, {
     onConnectionStateChange: (state) => {
