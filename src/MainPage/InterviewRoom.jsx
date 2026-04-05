@@ -807,69 +807,63 @@ function InterviewRoom({ room, onLeave }) {
   };
 
   const captureReferenceFace = async () => {
-    if (!participantVideoRef.current) {
-      alert("No participant video available.");
+  if (!participantVideoRef.current) {
+    alert("No participant video available.");
+    return;
+  }
+  
+  try {
+    setCapturingReference(true);
+    const video = participantVideoRef.current;
+    
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      alert("Participant video not ready. Please wait a moment.");
+      setCapturingReference(false);
       return;
     }
-    try {
-      setCapturingReference(true);
-      const video = participantVideoRef.current;
-      if (video.videoWidth === 0 || video.videoHeight === 0) {
-        alert("Participant video not ready.");
-        setCapturingReference(false);
-        return;
-      }
-      await new Promise(resolve => setTimeout(resolve, 500));
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      let captureSuccess = false;
-      let attempts = 0;
-      const maxAttempts = 3;
-      while (!captureSuccess && attempts < maxAttempts) {
-        try {
-          const blob = await new Promise((resolve) => {
-            canvas.toBlob(resolve, 'image/jpeg', 0.95 - (attempts * 0.1));
-          });
-          if (!blob) throw new Error('Failed to create image blob');
-          const formData = new FormData();
-          formData.append('image', blob, `reference_face_${Date.now()}.jpg`);
-          const response = await fetch(`${PYTHON_API_URL}/set_reference_face`, {
-            method: "POST",
-            credentials:'include',
-            body: formData
-          });
-          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-          const result = await response.json();
-          if (result.status === "success") {
-            setReferenceFaceSet(true);
-            captureSuccess = true;
-            alert('✅ Reference face captured successfully!');
-            break;
-          } else {
-            throw new Error(result.message || 'No face detected');
-          }
-        } catch (attemptError) {
-          console.log(`Attempt ${attempts + 1} failed:`, attemptError);
-          attempts++;
-          if (attempts < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          }
-        }
-      }
-      if (!captureSuccess) {
-        alert(`Failed to capture reference face after ${maxAttempts} attempts. Please ensure participant's face is clearly visible with good lighting.`);
-      }
-    } catch (error) {
-      console.error('Error capturing reference face:', error);
-      alert(`Error capturing reference face: ${error.message}`);
-    } finally {
-      setCapturingReference(false);
+    
+    // Wait a moment for the video to stabilize
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Convert canvas to blob and send as base64
+    const imageData = canvas.toDataURL('image/jpeg', 0.9);
+    
+    // Send to Python backend
+    const response = await fetch(`${PYTHON_API_URL}/set_reference_face`, {
+      method: "POST",
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ image: imageData })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
-  };
+    
+    const result = await response.json();
+    console.log('Reference face capture result:', result);
+    
+    if (result.status === "success") {
+      setReferenceFaceSet(true);
+      alert('✅ Reference face captured successfully!');
+    } else {
+      alert(result.message || 'No face detected. Please ensure the participant\'s face is clearly visible.');
+    }
+  } catch (error) {
+    console.error('Error capturing reference face:', error);
+    alert(`Error capturing reference face: ${error.message}`);
+  } finally {
+    setCapturingReference(false);
+  }
+};
 
   const generateFinalReport = async () => {
     if (!currentSessionId) {

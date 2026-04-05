@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 import cv2
 import numpy as np
@@ -215,11 +215,15 @@ class AIDetector:
                     self.verification_status = "Reference Set"
                     logger.info("Reference face captured")
                     return True
-                return False
+                else:
+                    logger.warning("No face detected for reference capture")
+                    return False
             except Exception as e:
                 logger.error(f"Error capturing reference face: {e}")
                 return False
-        return False
+        else:
+            logger.warning("No frame available for reference capture")
+            return False
 
     def cleanup(self):
         self.running = False
@@ -235,29 +239,39 @@ active_connections = []
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     active_connections.append(websocket)
-    logger.info(f"WebSocket connected. Total: {len(active_connections)}")
+    logger.info(f"✅ WebSocket connected. Total: {len(active_connections)}")
     
     try:
         while True:
-            data = await websocket.receive_text()
-            
             try:
-                json_data = json.loads(data)
+                # Set a timeout for receiving data (60 seconds)
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
                 
-                if json_data.get('type') == 'participant_frame':
-                    frame_data = json_data.get('image')
-                    if frame_data:
-                        await ai_detector.set_frame_from_frontend(frame_data)
+                try:
+                    json_data = json.loads(data)
                     
-                    detection_data = ai_detector.process_frame()
-                    await websocket.send_json(detection_data)
+                    if json_data.get('type') == 'participant_frame':
+                        frame_data = json_data.get('image')
+                        if frame_data:
+                            success = await ai_detector.set_frame_from_frontend(frame_data)
+                            if success:
+                                detection_data = ai_detector.process_frame()
+                                await websocket.send_json(detection_data)
+                            else:
+                                logger.warning("⚠️ Failed to process frame")
                     
-            except json.JSONDecodeError:
-                if data.startswith('data:image/') or len(data) > 1000:
-                    await ai_detector.set_frame_from_frontend(data)
-                    detection_data = ai_detector.process_frame()
-                    if detection_data:
-                        await websocket.send_json(detection_data)
+                except json.JSONDecodeError:
+                    if data.startswith('data:image/') or len(data) > 1000:
+                        success = await ai_detector.set_frame_from_frontend(data)
+                        if success:
+                            detection_data = ai_detector.process_frame()
+                            if detection_data:
+                                await websocket.send_json(detection_data)
+                        
+            except asyncio.TimeoutError:
+                # Send heartbeat to keep connection alive
+                await websocket.send_json({"type": "ping"})
+                continue
                 
     except WebSocketDisconnect:
         if websocket in active_connections:
@@ -271,11 +285,13 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.post("/start_interview")
 async def start_interview():
     ai_detector.start_interview()
+    logger.info("Interview started via API")
     return {"status": "success", "message": "Interview started"}
 
 @app.post("/stop_interview")
 async def stop_interview():
     ai_detector.stop_interview()
+    logger.info("Interview stopped via API")
     return {"status": "success", "message": "Interview stopped"}
 
 @app.post("/end_interview")
@@ -283,11 +299,57 @@ async def end_interview():
     return await stop_interview()
 
 @app.post("/set_reference_face")
-async def set_reference_face():
-    success = ai_detector.set_reference_face()
-    if success:
-        return {"status": "success", "message": "Reference face set"}
-    return {"status": "error", "message": "No face detected"}
+async def set_reference_face(request: Request):
+    """Set reference face for verification using JSON body"""
+    try:
+        # Try to get JSON data
+        data = await request.json()
+        image_data = data.get('image')
+        
+        if image_data:
+            # Decode base64 image
+            if image_data.startswith('data:image/'):
+                image_data = image_data.split(',')[1]
+            
+            image_bytes = base64.b64decode(image_data)
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if frame is not None:
+                async with ai_detector.frame_lock:
+                    ai_detector.latest_frame = frame
+                
+                success = ai_detector.set_reference_face()
+                if success:
+                    return {"status": "success", "message": "Reference face set successfully"}
+                else:
+                    return {"status": "error", "message": "No face detected. Please ensure face is clearly visible."}
+            else:
+                return {"status": "error", "message": "Failed to decode image"}
+        
+        # Fallback to form data (for backward compatibility)
+        form = await request.form()
+        file = form.get('image')
+        if file:
+            contents = await file.read()
+            nparr = np.frombuffer(contents, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if frame is not None:
+                async with ai_detector.frame_lock:
+                    ai_detector.latest_frame = frame
+                
+                success = ai_detector.set_reference_face()
+                if success:
+                    return {"status": "success", "message": "Reference face set successfully"}
+                else:
+                    return {"status": "error", "message": "No face detected"}
+        
+        return {"status": "error", "message": "No image provided"}
+        
+    except Exception as e:
+        logger.error(f"Error setting reference face: {e}")
+        return {"status": "error", "message": str(e)}
 
 @app.get("/health")
 async def health_check():
@@ -309,6 +371,7 @@ async def root():
 @app.on_event("shutdown")
 async def shutdown_event():
     ai_detector.cleanup()
+    logger.info("Application shutdown completed")
 
 # This is CRITICAL for Render deployment
 if __name__ == "__main__":
