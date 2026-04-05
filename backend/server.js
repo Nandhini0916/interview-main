@@ -15,22 +15,34 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// Validate required environment variables
-const requiredEnvVars = ['MONGODB_URI', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'];
-const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+// CORS configuration - Allow multiple origins
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'https://interview-main-pink.vercel.app',
+  'http://localhost:5173'
+].filter(Boolean);
 
-if (missingEnvVars.length > 0) {
-  console.error('❌ Missing required environment variables:', missingEnvVars.join(', '));
-}
-
-// Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('Blocked origin:', origin);
+      // Don't block, just log for debugging
+      callback(null, true);
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
 app.use(express.json());
 
-// Health check routes - ADD THESE FIRST
+// Health check routes
 app.get('/', (req, res) => {
   res.json({ 
     status: 'ok', 
@@ -63,7 +75,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/interview
   process.exit(1);
 });
 
-// WebSocket Server for real-time AI detection data
+// WebSocket Server
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws) => {
@@ -87,5 +99,5 @@ const PORT = process.env.PORT || 8000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📍 Health check: http://localhost:${PORT}/health`);
-  console.log(`🔗 Allowed frontend: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
+  console.log(`🔗 Allowed origins:`, allowedOrigins);
 });
