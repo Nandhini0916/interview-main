@@ -25,8 +25,18 @@ const InterviewLandingPage = () => {
     lastName: ''
   });
 
-  // IMPORTANT: API_BASE_URL should NOT include /api at the end
+  // API_BASE_URL should NOT include /api at the end
   const API_BASE_URL = process.env.REACT_APP_NODE_API_URL || 'http://localhost:8000';
+
+  // Debug: Log environment variables on mount
+  useEffect(() => {
+    console.log('=== Environment Variables Debug ===');
+    console.log('REACT_APP_GOOGLE_CLIENT_ID:', process.env.REACT_APP_GOOGLE_CLIENT_ID);
+    console.log('REACT_APP_NODE_API_URL:', process.env.REACT_APP_NODE_API_URL);
+    console.log('API_BASE_URL:', API_BASE_URL);
+    console.log('window.google available:', !!window.google);
+    console.log('===================================');
+  }, []);
 
   // Load user data from localStorage on component mount
   useEffect(() => {
@@ -228,6 +238,7 @@ const InterviewLandingPage = () => {
         // Sign in
         const response = await fetch(`${API_BASE_URL}/api/auth/signin`, {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
           },
@@ -257,64 +268,84 @@ const InterviewLandingPage = () => {
     }
   };
 
+  // UPDATED: Google Authentication with One Tap method (more reliable)
   const handleGoogleAuth = () => {
-  // Check if Google script is loaded
+    console.log('=== Google Auth Button Clicked ===');
+    console.log('window.google available?', !!window.google);
+    
+    // Check if Google script is loaded
     if (!window.google) {
+      console.error('Google script not loaded yet');
       alert('Google Sign-In is loading. Please try again in a moment.');
       return;
     }
 
-    const client = window.google.accounts.oauth2.initTokenClient({
-      client_id: process.env.REACT_APP_GOOGLE_CLIENT_ID,
-      scope: 'email profile openid',
-      callback: async (tokenResponse) => {
-        try {
-          // Fetch user info using the access token
-          const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: {
-              'Authorization': `Bearer ${tokenResponse.access_token}`
+    const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+    console.log('Using Client ID:', clientId);
+    
+    if (!clientId) {
+      console.error('Google Client ID is missing!');
+      alert('Configuration error: Google Client ID not set. Please contact support.');
+      return;
+    }
+
+    try {
+      // Method 1: Try One Tap first (more reliable)
+      console.log('Initializing Google One Tap...');
+      
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: async (response) => {
+          console.log('Google One Tap callback received', response);
+          
+          try {
+            // Decode the JWT credential to get user info
+            const payload = JSON.parse(atob(response.credential.split('.')[1]));
+            console.log('Decoded user info:', payload);
+            
+            // Send to backend
+            const res = await fetch(`${API_BASE_URL}/api/auth/google`, {
+              method: 'POST',
+              credentials: 'include',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                email: payload.email,
+                firstName: payload.given_name || 'Google',
+                lastName: payload.family_name || 'User',
+                googleId: payload.sub
+              })
+            });
+
+            const result = await res.json();
+            console.log('Backend response:', result);
+
+            if (result.success) {
+              localStorage.setItem('interviewUser', JSON.stringify(result.user));
+              localStorage.setItem('authToken', result.token);
+              setUser(result.user);
+              setShowAuthOverlay(false);
+              setShowProfileMenu(false);
+              alert('Successfully authenticated with Google!');
+            } else {
+              alert(result.message || 'Google authentication failed');
             }
-          });
-          const userInfo = await userInfoResponse.json();
-        
-          console.log('Google user info:', userInfo); // Debug log
-        
-          // Send to backend
-          const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              email: userInfo.email,
-              firstName: userInfo.given_name || 'Google',
-              lastName: userInfo.family_name || 'User',
-              googleId: userInfo.sub
-            })
-          });
-
-          const result = await response.json();
-          console.log('Backend response:', result); // Debug log
-
-          if (result.success) {
-            localStorage.setItem('interviewUser', JSON.stringify(result.user));
-            localStorage.setItem('authToken', result.token);
-            setUser(result.user);
-            setShowAuthOverlay(false);
-            setShowProfileMenu(false);
-            alert('Successfully authenticated with Google!');
-          } else {
-            alert(result.message || 'Google authentication failed');
+          } catch (error) {
+            console.error('Error in Google callback:', error);
+            alert('Authentication failed. Please try again.');
           }
-        } catch (error) {
-          console.error('Google auth error:', error);
-          alert('Google authentication failed. Please try again.');
-        }
-      },
-    });
-  
-    client.requestAccessToken();
+        },
+      });
+      
+      // Prompt the user to select an account
+      console.log('Prompting Google One Tap...');
+      window.google.accounts.id.prompt();
+      
+    } catch (error) {
+      console.error('Error initializing Google auth:', error);
+      alert('Failed to initialize Google Sign-In. Please try again.');
+    }
   };
 
   const handleLogout = () => {
@@ -356,6 +387,7 @@ const InterviewLandingPage = () => {
         // Notify backend that user is leaving
         const response = await fetch(`${API_BASE_URL}/api/rooms/${currentRoom.id}/leave`, {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
           },
