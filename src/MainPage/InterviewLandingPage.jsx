@@ -265,77 +265,87 @@ const InterviewLandingPage = () => {
     }
   };
 
-  // Google Authentication for Vite
-  const handleGoogleAuth = () => {
-    console.log('=== Google Auth Button Clicked ===');
-    console.log('window.google available?', !!window.google);
+const handleGoogleAuth = () => {
+  console.log('=== GOOGLE AUTH CLICKED ===');
+  
+  // Get Client ID from environment
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  console.log('Client ID:', clientId);
+  
+  if (!clientId) {
+    console.error('No Google Client ID found!');
+    alert('Configuration error: Google Client ID not set. Please contact support.');
+    return;
+  }
+  
+  // Wait for Google to load if not ready
+  if (!window.google) {
+    console.log('Google not loaded yet, waiting...');
+    alert('Google Sign-In is loading. Please click again in a moment.');
+    return;
+  }
+  
+  try {
+    console.log('Initializing Google One Tap...');
     
-    if (!window.google) {
-      alert('Google Sign-In is loading. Please try again in a moment.');
-      return;
-    }
-
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    console.log('Client ID from env:', clientId);
-    
-    if (!clientId) {
-      console.error('VITE_GOOGLE_CLIENT_ID is missing!');
-      alert('Configuration error. Please contact support.');
-      return;
-    }
-
-    try {
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: async (response) => {
-          console.log('Google callback received');
+    // Initialize Google One Tap
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: async (response) => {
+        console.log('Google callback received!');
+        
+        try {
+          // Decode the JWT token
+          const credential = response.credential;
+          const decoded = JSON.parse(atob(credential.split('.')[1]));
+          console.log('User info:', decoded);
           
-          try {
-            const payload = JSON.parse(atob(response.credential.split('.')[1]));
-            console.log('User payload:', payload);
-            
-            const res = await fetch(`${API_BASE_URL}/api/auth/google`, {
-              method: 'POST',
-              credentials: 'include',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                email: payload.email,
-                firstName: payload.given_name || 'Google',
-                lastName: payload.family_name || 'User',
-                googleId: payload.sub
-              })
-            });
-
-            const result = await res.json();
-            console.log('Backend response:', result);
-
-            if (result.success) {
-              localStorage.setItem('interviewUser', JSON.stringify(result.user));
-              localStorage.setItem('authToken', result.token);
-              setUser(result.user);
-              setShowAuthOverlay(false);
-              setShowProfileMenu(false);
-              alert('Successfully authenticated with Google!');
-            } else {
-              alert(result.message || 'Google authentication failed');
-            }
-          } catch (error) {
-            console.error('Error in callback:', error);
-            alert('Authentication failed. Please try again.');
+          const apiUrl = import.meta.env.VITE_NODE_API_URL || 'http://localhost:8000';
+          console.log('Sending to backend:', apiUrl);
+          
+          // Send to your backend
+          const res = await fetch(`${apiUrl}/api/auth/google`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email: decoded.email,
+              firstName: decoded.given_name || 'Google',
+              lastName: decoded.family_name || 'User',
+              googleId: decoded.sub
+            })
+          });
+          
+          const result = await res.json();
+          console.log('Backend response:', result);
+          
+          if (result.success) {
+            localStorage.setItem('interviewUser', JSON.stringify(result.user));
+            localStorage.setItem('authToken', result.token);
+            setUser(result.user);
+            setShowAuthOverlay(false);
+            setShowProfileMenu(false);
+            alert('Successfully logged in with Google!');
+          } else {
+            alert(result.message || 'Google authentication failed');
           }
-        },
-      });
-      
-      window.google.accounts.id.prompt();
-      console.log('Google prompt shown');
-      
-    } catch (error) {
-      console.error('Google init error:', error);
-      alert('Failed to initialize Google Sign-In.');
-    }
-  };
+        } catch (err) {
+          console.error('Error:', err);
+          alert('Authentication failed: ' + err.message);
+        }
+      },
+    });
+    
+    // Show the One Tap prompt
+    console.log('Showing Google One Tap prompt...');
+    window.google.accounts.id.prompt();
+    
+  } catch (err) {
+    console.error('Error initializing Google:', err);
+    alert('Failed to initialize Google Sign-In: ' + err.message);
+  }
+};
 
   const handleLogout = () => {
     localStorage.removeItem('interviewUser');
