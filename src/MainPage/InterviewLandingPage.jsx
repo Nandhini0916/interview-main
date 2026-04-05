@@ -38,6 +38,11 @@ const InterviewLandingPage = () => {
     console.log('===================================');
   }, []);
 
+  // Debug currentRoom changes
+  useEffect(() => {
+    console.log('🔄 currentRoom changed:', currentRoom);
+  }, [currentRoom]);
+
   // Load user data from localStorage on component mount
   useEffect(() => {
     const storedUser = localStorage.getItem('interviewUser');
@@ -48,6 +53,7 @@ const InterviewLandingPage = () => {
     const storedCurrentRoom = localStorage.getItem('currentRoom');
     if (storedCurrentRoom) {
       const roomData = JSON.parse(storedCurrentRoom);
+      console.log('Loaded stored room:', roomData);
       setCurrentRoom(roomData);
     }
   }, []);
@@ -126,9 +132,15 @@ const InterviewLandingPage = () => {
           };
           
           console.log(`Creating room ${generatedRoomId}`);
-          setCurrentRoom(roomData);
+          console.log('Setting currentRoom to:', roomData);
+          
+          // Close overlay first
           setShowOverlay(false);
           setRoomPassword('');
+          
+          // Then set current room - this should trigger navigation
+          setCurrentRoom(roomData);
+          
           alert('Room created successfully!');
         } else {
           alert(result.message || 'Failed to create room');
@@ -266,64 +278,58 @@ const InterviewLandingPage = () => {
     }
   };
 
-const handleGoogleAuth = useGoogleLogin({
-  onSuccess: async (tokenResponse) => {
-    console.log('Google login success:', tokenResponse)
-    
-    try {
-      // Get the access token from the response
-      const accessToken = tokenResponse.access_token
+  const handleGoogleAuth = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      console.log('Google login success:', tokenResponse)
       
-      // Fetch user info from Google's API using the access token
-      const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      })
-      
-      const userInfo = await userInfoResponse.json()
-      console.log('Google user info:', userInfo)
-      
-      // Send the user info to your backend (NOT the token!)
-      const apiUrl = import.meta.env.VITE_NODE_API_URL || 'http://localhost:8000'
-      
-      const response = await fetch(`${apiUrl}/api/auth/google`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: userInfo.email,
-          firstName: userInfo.given_name || 'Google',
-          lastName: userInfo.family_name || 'User',
-          googleId: userInfo.sub
+      try {
+        const accessToken = tokenResponse.access_token
+        const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
         })
-      })
-      
-      const result = await response.json()
-      console.log('Backend response:', result)
-      
-      if (result.success) {
-        localStorage.setItem('interviewUser', JSON.stringify(result.user))
-        localStorage.setItem('authToken', result.token)
-        setUser(result.user)
-        setShowAuthOverlay(false)
-        setShowProfileMenu(false)
-        alert('Successfully authenticated with Google!')
-      } else {
-        alert(result.message || 'Google authentication failed')
+        const userInfo = await userInfoResponse.json()
+        console.log('Google user info:', userInfo)
+        
+        const apiUrl = import.meta.env.VITE_NODE_API_URL || 'http://localhost:8000'
+        const response = await fetch(`${apiUrl}/api/auth/google`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: userInfo.email,
+            firstName: userInfo.given_name || 'Google',
+            lastName: userInfo.family_name || 'User',
+            googleId: userInfo.sub
+          })
+        })
+        
+        const result = await response.json()
+        console.log('Backend response:', result)
+        
+        if (result.success) {
+          localStorage.setItem('interviewUser', JSON.stringify(result.user))
+          localStorage.setItem('authToken', result.token)
+          setUser(result.user)
+          setShowAuthOverlay(false)
+          setShowProfileMenu(false)
+          alert('Successfully authenticated with Google!')
+        } else {
+          alert(result.message || 'Google authentication failed')
+        }
+      } catch (error) {
+        console.error('Error:', error)
+        alert('Authentication failed: ' + error.message)
       }
-    } catch (error) {
-      console.error('Error:', error)
-      alert('Authentication failed: ' + error.message)
-    }
-  },
-  onError: (error) => {
-    console.error('Google login failed:', error)
-    alert('Google login failed. Please try again.')
-  },
-  flow: 'implicit', // This returns access_token directly
-})
+    },
+    onError: (error) => {
+      console.error('Google login failed:', error)
+      alert('Google login failed. Please try again.')
+    },
+    flow: 'implicit',
+  })
 
   const handleLogout = () => {
     localStorage.removeItem('interviewUser');
@@ -358,42 +364,55 @@ const handleGoogleAuth = useGoogleLogin({
   };
 
   const leaveMeeting = async () => {
-  console.log("🚪 leaveMeeting called in InterviewLandingPage");
-  
+    console.log("🚪 leaveMeeting called in InterviewLandingPage");
+    
+    if (currentRoom) {
+      try {
+        await fetch(`${API_BASE_URL}/api/rooms/${currentRoom.id}/leave`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: user?.id
+          })
+        });
+        console.log("✅ Backend notified about leaving");
+      } catch (error) {
+        console.error('Error leaving room:', error);
+      }
+    }
+
+    setCurrentRoom(null);
+    setInterviewCode('');
+    setJoinRoomPassword('');
+    setJoinError('');
+    setShowOverlay(false);
+    setShowProfileMenu(false);
+    setGeneratedRoomId('');
+    setRoomPassword('');
+    
+    localStorage.removeItem('currentRoom');
+    
+    console.log("✅ State cleared, should return to landing page");
+  };
+
+  // ============================================
+  // CRITICAL: This MUST be before the landing page return
+  // ============================================
   if (currentRoom) {
-    try {
-      await fetch(`${API_BASE_URL}/api/rooms/${currentRoom.id}/leave`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: user?.id
-        })
-      });
-      console.log("✅ Backend notified about leaving");
-    } catch (error) {
-      console.error('Error leaving room:', error);
+    console.log('🎯 Rendering room component:', currentRoom.isJoining ? 'ParticipantRoom' : 'InterviewRoom');
+    if (currentRoom.isJoining) {
+      return <ParticipantRoom room={currentRoom} onLeave={leaveMeeting} />;
+    } else {
+      return <InterviewRoom room={currentRoom} onLeave={leaveMeeting} />;
     }
   }
 
-  // Clear all room-related state
-  setCurrentRoom(null);
-  setInterviewCode('');
-  setJoinRoomPassword('');
-  setJoinError('');
-  setShowOverlay(false);
-  setShowProfileMenu(false);
-  setGeneratedRoomId('');
-  setRoomPassword('');
-  
-  // Clear localStorage
-  localStorage.removeItem('currentRoom');
-  
-  console.log("✅ State cleared, should return to landing page");
-};
-
+  // ============================================
+  // Only render landing page if no currentRoom
+  // ============================================
   return (
     <div className="landing-container">
       {showOverlay && (
