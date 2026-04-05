@@ -25,16 +25,15 @@ const InterviewLandingPage = () => {
     lastName: ''
   });
 
-  // API_BASE_URL should NOT include /api at the end
-  const API_BASE_URL = process.env.REACT_APP_NODE_API_URL || 'http://localhost:8000';
+  // Vite uses import.meta.env instead of process.env
+  const API_BASE_URL = import.meta.env.VITE_NODE_API_URL || 'http://localhost:8000';
 
-  // Debug: Log environment variables on mount
+  // Debug log
   useEffect(() => {
-    console.log('=== Environment Variables Debug ===');
-    console.log('REACT_APP_GOOGLE_CLIENT_ID:', process.env.REACT_APP_GOOGLE_CLIENT_ID);
-    console.log('REACT_APP_NODE_API_URL:', process.env.REACT_APP_NODE_API_URL);
+    console.log('=== Environment Variables (Vite) ===');
+    console.log('VITE_GOOGLE_CLIENT_ID:', import.meta.env.VITE_GOOGLE_CLIENT_ID);
+    console.log('VITE_NODE_API_URL:', import.meta.env.VITE_NODE_API_URL);
     console.log('API_BASE_URL:', API_BASE_URL);
-    console.log('window.google available:', !!window.google);
     console.log('===================================');
   }, []);
 
@@ -45,7 +44,6 @@ const InterviewLandingPage = () => {
       setUser(JSON.parse(storedUser));
     }
 
-    // Load current room from localStorage to persist on refresh
     const storedCurrentRoom = localStorage.getItem('currentRoom');
     if (storedCurrentRoom) {
       const roomData = JSON.parse(storedCurrentRoom);
@@ -87,7 +85,7 @@ const InterviewLandingPage = () => {
       alert('Please login to create an interview room.');
       return;
     }
-    const newRoomId = generateRoomId();
+    generateRoomId();
     setShowOverlay(true);
   };
 
@@ -126,7 +124,7 @@ const InterviewLandingPage = () => {
             }
           };
           
-          console.log(`Creating room ${generatedRoomId} with password: ${roomPassword}`);
+          console.log(`Creating room ${generatedRoomId}`);
           setCurrentRoom(roomData);
           setShowOverlay(false);
           setRoomPassword('');
@@ -235,7 +233,6 @@ const InterviewLandingPage = () => {
           alert(result.message || 'Sign up failed');
         }
       } else {
-        // Sign in
         const response = await fetch(`${API_BASE_URL}/api/auth/signin`, {
           method: 'POST',
           credentials: 'include',
@@ -268,42 +265,35 @@ const InterviewLandingPage = () => {
     }
   };
 
-  // UPDATED: Google Authentication with One Tap method (more reliable)
+  // Google Authentication for Vite
   const handleGoogleAuth = () => {
     console.log('=== Google Auth Button Clicked ===');
     console.log('window.google available?', !!window.google);
     
-    // Check if Google script is loaded
     if (!window.google) {
-      console.error('Google script not loaded yet');
       alert('Google Sign-In is loading. Please try again in a moment.');
       return;
     }
 
-    const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
-    console.log('Using Client ID:', clientId);
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    console.log('Client ID from env:', clientId);
     
     if (!clientId) {
-      console.error('Google Client ID is missing!');
-      alert('Configuration error: Google Client ID not set. Please contact support.');
+      console.error('VITE_GOOGLE_CLIENT_ID is missing!');
+      alert('Configuration error. Please contact support.');
       return;
     }
 
     try {
-      // Method 1: Try One Tap first (more reliable)
-      console.log('Initializing Google One Tap...');
-      
       window.google.accounts.id.initialize({
         client_id: clientId,
         callback: async (response) => {
-          console.log('Google One Tap callback received', response);
+          console.log('Google callback received');
           
           try {
-            // Decode the JWT credential to get user info
             const payload = JSON.parse(atob(response.credential.split('.')[1]));
-            console.log('Decoded user info:', payload);
+            console.log('User payload:', payload);
             
-            // Send to backend
             const res = await fetch(`${API_BASE_URL}/api/auth/google`, {
               method: 'POST',
               credentials: 'include',
@@ -332,19 +322,18 @@ const InterviewLandingPage = () => {
               alert(result.message || 'Google authentication failed');
             }
           } catch (error) {
-            console.error('Error in Google callback:', error);
+            console.error('Error in callback:', error);
             alert('Authentication failed. Please try again.');
           }
         },
       });
       
-      // Prompt the user to select an account
-      console.log('Prompting Google One Tap...');
       window.google.accounts.id.prompt();
+      console.log('Google prompt shown');
       
     } catch (error) {
-      console.error('Error initializing Google auth:', error);
-      alert('Failed to initialize Google Sign-In. Please try again.');
+      console.error('Google init error:', error);
+      alert('Failed to initialize Google Sign-In.');
     }
   };
 
@@ -354,7 +343,6 @@ const InterviewLandingPage = () => {
     setUser(null);
     setShowProfileMenu(false);
     
-    // If user was in a room, leave it
     if (currentRoom) {
       leaveMeeting();
     }
@@ -384,8 +372,7 @@ const InterviewLandingPage = () => {
   const leaveMeeting = async () => {
     if (currentRoom) {
       try {
-        // Notify backend that user is leaving
-        const response = await fetch(`${API_BASE_URL}/api/rooms/${currentRoom.id}/leave`, {
+        await fetch(`${API_BASE_URL}/api/rooms/${currentRoom.id}/leave`, {
           method: 'POST',
           credentials: 'include',
           headers: {
@@ -395,10 +382,6 @@ const InterviewLandingPage = () => {
             userId: user?.id
           })
         });
-
-        if (!response.ok) {
-          console.error('Failed to notify backend about leaving room');
-        }
       } catch (error) {
         console.error('Error leaving room:', error);
       }
@@ -420,7 +403,6 @@ const InterviewLandingPage = () => {
 
   return (
     <div className="landing-container">
-      {/* Room Creation Overlay */}
       {showOverlay && (
         <div className="overlay">
           <div className="overlay-content">
@@ -454,7 +436,6 @@ const InterviewLandingPage = () => {
         </div>
       )}
 
-      {/* Authentication Overlay */}
       {showAuthOverlay && (
         <div className="overlay">
           <div className="overlay-content auth-overlay">
@@ -539,16 +520,11 @@ const InterviewLandingPage = () => {
 
       <div className="header">True Hire</div>
       
-      {/* Profile Icon with Dropdown Menu */}
       <div className="profile-menu-container">
-        <div 
-          className="profile-icon"
-          onClick={toggleProfileMenu}
-        >
+        <div className="profile-icon" onClick={toggleProfileMenu}>
           <FaUser />
         </div>
 
-        {/* Profile Dropdown Menu */}
         {showProfileMenu && (
           <div className="profile-dropdown">
             {user ? (

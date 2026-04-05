@@ -31,8 +31,22 @@ function ParticipantRoom({ room, onLeave }) {
   const wsRef = useRef(null);
   const webrtcManagerRef = useRef(null);
 
-  const PYTHON_API_URL = process.env.REACT_APP_PYTHON_API_URL || 'http://localhost:8001';
-  const NODE_API_URL = process.env.REACT_APP_NODE_API_URL || 'http://localhost:8000/api';
+  // VITE environment variables (updated from REACT_APP_)
+  const PYTHON_API_URL = import.meta.env.VITE_PYTHON_API_URL || 'http://localhost:8001';
+  const NODE_API_URL = import.meta.env.VITE_NODE_API_URL || 'http://localhost:8000';
+  const PYTHON_WS_URL = import.meta.env.VITE_PYTHON_WS_URL || 'ws://localhost:8001';
+
+  // Debug log for environment variables
+  useEffect(() => {
+    console.log('=== ParticipantRoom Environment Variables (Vite) ===');
+    console.log('VITE_PYTHON_API_URL:', import.meta.env.VITE_PYTHON_API_URL);
+    console.log('VITE_NODE_API_URL:', import.meta.env.VITE_NODE_API_URL);
+    console.log('VITE_PYTHON_WS_URL:', import.meta.env.VITE_PYTHON_WS_URL);
+    console.log('PYTHON_API_URL:', PYTHON_API_URL);
+    console.log('NODE_API_URL:', NODE_API_URL);
+    console.log('PYTHON_WS_URL:', PYTHON_WS_URL);
+    console.log('==================================================');
+  }, []);
 
   // Enhanced connection status management
   const updateConnectionStatus = (status) => {
@@ -167,7 +181,7 @@ function ParticipantRoom({ room, onLeave }) {
     try {
       if (wsRef.current) wsRef.current.close();
       
-      const ws = new WebSocket(`${process.env.REACT_APP_PYTHON_WS_URL || 'ws://localhost:8001'}/ws`);
+      const ws = new WebSocket(`${PYTHON_WS_URL}/ws`);
       
       ws.onopen = () => {
         console.log("✅ Participant WebSocket connected to AI backend");
@@ -356,7 +370,7 @@ function ParticipantRoom({ room, onLeave }) {
     console.log('✅ Camera stopped');
   };
 
-  // FIXED: Enhanced screen sharing - replaces camera in the same video element
+  // Enhanced screen sharing - replaces camera in the same video element
   const toggleScreenShare = async () => {
     if (!isScreenSharing) {
       try {
@@ -386,10 +400,9 @@ function ParticipantRoom({ room, onLeave }) {
 
         setScreenStream(screenStream);
         
-        // Replace the camera video with screen share in the same video element
         if (videoRef.current) {
           videoRef.current.srcObject = screenStream;
-          videoRef.current.classList.remove('mirror-effect'); // Remove mirror effect for screen share
+          videoRef.current.classList.remove('mirror-effect');
           videoRef.current.play().catch(err => console.warn('⚠️ Screen share play warning:', err));
         }
         
@@ -427,7 +440,7 @@ function ParticipantRoom({ room, onLeave }) {
     }
   };
 
-  // FIXED: Enhanced screen share stop - restores camera
+  // Enhanced screen share stop - restores camera
   const stopScreenShare = () => {
     console.log('🛑 Stopping screen share...');
     
@@ -439,10 +452,9 @@ function ParticipantRoom({ room, onLeave }) {
       setScreenStream(null);
     }
     
-    // Restore camera stream in the video element
     if (videoRef.current && mediaStream) {
       videoRef.current.srcObject = mediaStream;
-      videoRef.current.classList.add('mirror-effect'); // Add mirror effect back for camera
+      videoRef.current.classList.add('mirror-effect');
       videoRef.current.play().catch(console.warn);
     }
     
@@ -471,7 +483,7 @@ function ParticipantRoom({ room, onLeave }) {
       const user = JSON.parse(localStorage.getItem('interviewUser') || '{}');
       const sessionId = `session-${room.id}-participant-${Date.now()}`;
       
-      const response = await fetch(`${NODE_API_URL}/detections/session/start`, {
+      const response = await fetch(`${NODE_API_URL}/api/detections/session/start`, {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -504,7 +516,7 @@ function ParticipantRoom({ room, onLeave }) {
         return;
       }
 
-      await fetch(`${NODE_API_URL}/detections/save`, {
+      await fetch(`${NODE_API_URL}/api/detections/save`, {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -634,7 +646,7 @@ function ParticipantRoom({ room, onLeave }) {
     
     if (currentSessionId) {
       try {
-        await fetch(`${NODE_API_URL}/detections/session/end`, {
+        await fetch(`${NODE_API_URL}/api/detections/session/end`, {
           method: "POST",
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sessionId: currentSessionId })
@@ -740,10 +752,9 @@ function ParticipantRoom({ room, onLeave }) {
       <div className="room-content">
         <div className="video-section">
           <div className="video-container">
-            {/* FIXED: Enhanced video grid with consistent sizing */}
             <div className={`video-grid ${isScreenSharing || isInterviewerScreenSharing ? 'has-screen-share' : ''}`}>
               
-              {/* Interviewer Video - Always maintains consistent size */}
+              {/* Interviewer Video */}
               <div className={`video-tile interviewer-tile ${isInterviewerScreenSharing ? 'screen-share' : ''}`}>
                 <video
                   ref={interviewerVideoRef}
@@ -771,7 +782,7 @@ function ParticipantRoom({ room, onLeave }) {
                 )}
               </div>
 
-              {/* Participant Video - Always maintains consistent size */}
+              {/* Participant Video */}
               <div className={`video-tile participant-tile ${isScreenSharing ? 'screen-share' : ''}`}>
                 <video
                   ref={videoRef}

@@ -52,8 +52,22 @@ function InterviewRoom({ room, onLeave }) {
   const frameIntervalRef = useRef(null);
   const webrtcManagerRef = useRef(null);
 
-  const PYTHON_API_URL = process.env.REACT_APP_PYTHON_API_URL || 'http://localhost:8001';
-  const NODE_API_URL = process.env.REACT_APP_NODE_API_URL || 'http://localhost:8000/api';
+  // VITE environment variables (updated from REACT_APP_)
+  const PYTHON_API_URL = import.meta.env.VITE_PYTHON_API_URL || 'http://localhost:8001';
+  const NODE_API_URL = import.meta.env.VITE_NODE_API_URL || 'http://localhost:8000';
+  const PYTHON_WS_URL = import.meta.env.VITE_PYTHON_WS_URL || 'ws://localhost:8001';
+
+  // Debug log for environment variables
+  useEffect(() => {
+    console.log('=== InterviewRoom Environment Variables (Vite) ===');
+    console.log('VITE_PYTHON_API_URL:', import.meta.env.VITE_PYTHON_API_URL);
+    console.log('VITE_NODE_API_URL:', import.meta.env.VITE_NODE_API_URL);
+    console.log('VITE_PYTHON_WS_URL:', import.meta.env.VITE_PYTHON_WS_URL);
+    console.log('PYTHON_API_URL:', PYTHON_API_URL);
+    console.log('NODE_API_URL:', NODE_API_URL);
+    console.log('PYTHON_WS_URL:', PYTHON_WS_URL);
+    console.log('================================================');
+  }, []);
 
   // Enhanced connection status management
   const updateConnectionStatus = (status) => {
@@ -73,24 +87,21 @@ function InterviewRoom({ room, onLeave }) {
 
   // Enhanced performance calculation
   const calculatePerformanceScore = (detectionData) => {
-    let score = 50; // Base score
+    let score = 50;
     
-    // Positive factors
-    if (detectionData.faces === 1) score += 15; // Single face detection
-    if (detectionData.eye_moves < 10) score += 10; // Good eye contact
-    if (detectionData.lipsync) score += 10; // Good lip sync
-    if (!detectionData.bg_voice) score += 5; // No background noise
-    if (detectionData.speech) score += 5; // Speech detected
+    if (detectionData.faces === 1) score += 15;
+    if (detectionData.eye_moves < 10) score += 10;
+    if (detectionData.lipsync) score += 10;
+    if (!detectionData.bg_voice) score += 5;
+    if (detectionData.speech) score += 5;
     if (detectionData.mood === 'happy' || detectionData.mood === 'neutral') score += 5;
     
-    // Negative factors
-    if (detectionData.faces === 0) score -= 20; // No face detected
-    if (detectionData.faces > 1) score -= 15; // Multiple faces
-    if (detectionData.eye_moves > 30) score -= 10; // Too many eye movements
-    if (detectionData.face_alert) score -= 10; // Face verification failed
-    if (detectionData.bg_voice) score -= 10; // Background voice detected
+    if (detectionData.faces === 0) score -= 20;
+    if (detectionData.faces > 1) score -= 15;
+    if (detectionData.eye_moves > 30) score -= 10;
+    if (detectionData.face_alert) score -= 10;
+    if (detectionData.bg_voice) score -= 10;
     
-    // Ensure score is within bounds
     return Math.max(0, Math.min(100, score));
   };
 
@@ -256,7 +267,7 @@ function InterviewRoom({ room, onLeave }) {
         wsRef.current.close();
       }
       
-      const ws = new WebSocket(`${process.env.REACT_APP_PYTHON_WS_URL || 'ws://localhost:8001'}/ws`);
+      const ws = new WebSocket(`${PYTHON_WS_URL}/ws`);
       
       ws.onopen = () => {
         console.log("✅ Interviewer connected to AI WebSocket");
@@ -359,7 +370,6 @@ function InterviewRoom({ room, onLeave }) {
       setIsCameraOn(true);
       setIsMicOn(true);
       
-      // Initialize WebRTC manager and connect to signaling
       initializeWebRTCManager();
       if (webrtcManagerRef.current) {
         await webrtcManagerRef.current.connect();
@@ -370,7 +380,6 @@ function InterviewRoom({ room, onLeave }) {
         });
       }
       
-      // Create session after media is ready
       await createSession();
       
       console.log('✅ Interviewer camera started successfully');
@@ -387,24 +396,20 @@ function InterviewRoom({ room, onLeave }) {
   const stopCamera = () => {
     console.log('🛑 Interviewer stopping camera...');
     
-    // Clear intervals
     if (frameIntervalRef.current) {
       clearInterval(frameIntervalRef.current);
       frameIntervalRef.current = null;
     }
     
-    // Close WebSockets
     if (wsRef.current) {
       wsRef.current.close();
       setAiConnected(false);
     }
     
-    // Close WebRTC manager
     if (webrtcManagerRef.current) {
       webrtcManagerRef.current.close();
     }
     
-    // Stop media streams
     if (mediaStream) {
       mediaStream.getTracks().forEach(track => track.stop());
     }
@@ -413,7 +418,6 @@ function InterviewRoom({ room, onLeave }) {
       screenStream.getTracks().forEach(track => track.stop());
     }
     
-    // Reset video elements
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
@@ -421,7 +425,6 @@ function InterviewRoom({ room, onLeave }) {
       participantVideoRef.current.srcObject = null;
     }
     
-    // Reset states
     setIsCameraOn(false);
     setIsMicOn(false);
     setIsScreenSharing(false);
@@ -451,10 +454,8 @@ function InterviewRoom({ room, onLeave }) {
         return;
       }
       
-      // Start AI analysis
       connectWebSocket();
       
-      // Notify Python backend
       try {
         const response = await fetch(`${PYTHON_API_URL}/start_interview`, {
           method: "POST",
@@ -506,7 +507,7 @@ function InterviewRoom({ room, onLeave }) {
       if (currentSessionId) {
         await generateFinalReport();
         try {
-          await fetch(`${NODE_API_URL}/detections/session/end`, {
+          await fetch(`${NODE_API_URL}/api/detections/session/end`, {
             method: "POST",
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessionId: currentSessionId })
@@ -533,7 +534,7 @@ function InterviewRoom({ room, onLeave }) {
       }
       
       const sessionId = `session-${room.id}-interviewer-${Date.now()}`;
-      const response = await fetch(`${NODE_API_URL}/detections/session/start`, {
+      const response = await fetch(`${NODE_API_URL}/api/detections/session/start`, {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -563,7 +564,7 @@ function InterviewRoom({ room, onLeave }) {
   const saveDetectionData = async (detectionData) => {
     try {
       if (!currentSessionId) return;
-      await fetch(`${NODE_API_URL}/detections/save`, {
+      await fetch(`${NODE_API_URL}/api/detections/save`, {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -612,7 +613,6 @@ function InterviewRoom({ room, onLeave }) {
     return video.videoWidth > 0 && video.videoHeight > 0 && video.readyState >= 2;
   };
 
-  // Enhanced message handling with duplicate prevention
   const addMessage = (text, sender, timestamp, id = null) => {
     const messageId = id || Date.now() + Math.random();
     const message = {
@@ -633,7 +633,6 @@ function InterviewRoom({ room, onLeave }) {
     if (sender === 'participant' && !showChat) setUnreadMessages(prev => prev + 1);
   };
 
-  // Enhanced message sending with retry mechanism
   const sendMessage = () => {
     if (newMessage.trim() === "") return;
     
@@ -687,7 +686,6 @@ function InterviewRoom({ room, onLeave }) {
     }
   };
 
-  // FIXED: Enhanced screen sharing with consistent box sizes
   const toggleScreenShare = async () => {
     if (!isScreenSharing) {
       try {
@@ -717,16 +715,14 @@ function InterviewRoom({ room, onLeave }) {
 
         setScreenStream(screenStream);
         
-        // Replace the camera video with screen share in the same video element
         if (videoRef.current) {
           videoRef.current.srcObject = screenStream;
-          videoRef.current.classList.remove('mirror-effect'); // Remove mirror effect for screen share
+          videoRef.current.classList.remove('mirror-effect');
           videoRef.current.play().catch(console.warn);
         }
 
         setIsScreenSharing(true);
         
-        // Update WebRTC with screen stream
         if (webrtcManagerRef.current) {
           const videoTrack = screenStream.getVideoTracks()[0];
           if (videoTrack) {
@@ -738,11 +734,9 @@ function InterviewRoom({ room, onLeave }) {
             await webrtcManagerRef.current.replaceAudioTrack(audioTrack);
           }
           
-          // Notify participant about screen share state
           webrtcManagerRef.current.sendScreenShareState(true);
         }
 
-        // Handle track ended events
         screenStream.getVideoTracks()[0].onended = () => {
           console.log('Screen share track ended by user');
           stopScreenShare();
@@ -761,7 +755,6 @@ function InterviewRoom({ room, onLeave }) {
     }
   };
 
-  // FIXED: Enhanced screen share stop - restores camera
   const stopScreenShare = () => {
     console.log('🛑 Interviewer stopping screen share...');
     
@@ -773,16 +766,14 @@ function InterviewRoom({ room, onLeave }) {
       setScreenStream(null);
     }
     
-    // Restore camera stream in the video element
     if (videoRef.current && mediaStream) {
       videoRef.current.srcObject = mediaStream;
-      videoRef.current.classList.add('mirror-effect'); // Add mirror effect back for camera
+      videoRef.current.classList.add('mirror-effect');
       videoRef.current.play().catch(console.warn);
     }
     
     setIsScreenSharing(false);
     
-    // Restore WebRTC to camera stream
     if (webrtcManagerRef.current && mediaStream) {
       const videoTrack = mediaStream.getVideoTracks()[0];
       if (videoTrack) {
@@ -794,7 +785,6 @@ function InterviewRoom({ room, onLeave }) {
         webrtcManagerRef.current.replaceAudioTrack(audioTrack);
       }
       
-      // Notify participant about screen share stop
       webrtcManagerRef.current.sendScreenShareState(false);
     }
     
@@ -877,7 +867,6 @@ function InterviewRoom({ room, onLeave }) {
     }
   };
 
-  // Enhanced report generation with performance score
   const generateFinalReport = async () => {
     if (!currentSessionId) {
       alert("No active session found. Cannot generate report.");
@@ -889,7 +878,7 @@ function InterviewRoom({ room, onLeave }) {
       const sessionDuration = calculateDuration();
       const performanceScore = calculatePerformanceScore(aiResults);
       
-      const response = await fetch(`${NODE_API_URL}/detections/generate-report`, {
+      const response = await fetch(`${NODE_API_URL}/api/detections/generate-report`, {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -928,7 +917,7 @@ function InterviewRoom({ room, onLeave }) {
   const downloadReport = async () => {
     if (!finalReport) return;
     try {
-      const response = await fetch(`${NODE_API_URL}/detections/download-report`, {
+      const response = await fetch(`${NODE_API_URL}/api/detections/download-report`, {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -961,7 +950,7 @@ function InterviewRoom({ room, onLeave }) {
   const sendReportToParticipant = async () => {
     if (!finalReport) return;
     try {
-      const response = await fetch(`${NODE_API_URL}/detections/share-report`, {
+      const response = await fetch(`${NODE_API_URL}/api/detections/share-report`, {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1007,7 +996,6 @@ function InterviewRoom({ room, onLeave }) {
     onLeave();
   };
 
-  // Enhanced useEffect for participant video stream handling
   useEffect(() => {
     if (participantStream && participantVideoRef.current) {
       console.log('🎬 Setting up participant video element with stream');
@@ -1049,7 +1037,6 @@ function InterviewRoom({ room, onLeave }) {
     };
   }, [isParticipantVideoReady(), aiConnected, interviewStatus]);
 
-  // Enhanced mount and cleanup
   useEffect(() => {
     console.log('🏠 InterviewRoom mounted');
     
@@ -1099,10 +1086,8 @@ function InterviewRoom({ room, onLeave }) {
       <div className="room-content">
         <div className="video-section">
           <div className="video-container">
-            {/* FIXED: Enhanced video grid with consistent sizing */}
             <div className={`video-grid ${isScreenSharing || isParticipantScreenSharing ? 'has-screen-share' : ''}`}>
               
-              {/* Interviewer Video - Always maintains consistent size */}
               <div className={`video-tile interviewer-tile ${isScreenSharing ? 'screen-share' : ''}`}>
                 <video
                   ref={videoRef}
@@ -1131,7 +1116,6 @@ function InterviewRoom({ room, onLeave }) {
                 )}
               </div>
               
-              {/* Participant Video - Always maintains consistent size */}
               <div className={`video-tile participant-tile ${isParticipantScreenSharing ? 'screen-share' : ''}`}>
                 <video
                   ref={participantVideoRef}
