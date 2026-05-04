@@ -6,7 +6,7 @@ const getSignalingServerUrl = () => {
   let url = import.meta.env.VITE_SIGNALING_URL;
   if (!url) {
     // Fallback for local development
-    url = 'ws://localhost:8081';
+    url = 'ws://localhost:8082';
   }
   console.log('🔗 Signaling server URL:', url);
   return url;
