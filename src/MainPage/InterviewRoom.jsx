@@ -232,7 +232,7 @@ function InterviewRoom({ room, onLeave }) {
     );
   };
 
-  // FIXED: Enhanced WebSocket connection with better error handling
+  // Enhanced WebSocket connection with test message and proper handling
   const connectWebSocket = () => {
     try {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -249,16 +249,28 @@ function InterviewRoom({ room, onLeave }) {
       
       const ws = new WebSocket(wsUrl);
       
+      // Set connection timeout - INCREASED to 30s for better reliability with Render/slow networks
+      const connectionTimeout = setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          console.error('❌ AI WebSocket connection timeout after 30 seconds');
+          ws.close();
+          setAiConnected(false);
+        }
+      }, 30000);
+      
       ws.onopen = () => {
+        clearTimeout(connectionTimeout);
         console.log("✅ Interviewer connected to AI WebSocket");
         setAiConnected(true);
         
-        // Start sending frames once connected and participant video is ready
-        if (participantVideoRef.current && interviewStatus === "active") {
-          if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
-          frameIntervalRef.current = setInterval(captureAndSendFrame, 1000);
-          console.log('🤖 Started sending frames to AI');
-        }
+        // Send a test message to verify connection
+        ws.send(JSON.stringify({
+          type: 'test',
+          message: 'Connection test',
+          timestamp: Date.now()
+        }));
+        
+        console.log('WebSocket open, waiting for participant video...');
       };
       
       ws.onmessage = (event) => {
@@ -268,6 +280,11 @@ function InterviewRoom({ room, onLeave }) {
           // Handle ping messages
           if (data.type === 'ping') {
             console.log('💓 Received ping from AI server');
+            return;
+          }
+          
+          if (data.type === 'test_response') {
+            console.log('✅ AI WebSocket test successful!');
             return;
           }
           
@@ -293,11 +310,12 @@ function InterviewRoom({ room, onLeave }) {
             saveDetectionData(enhancedData);
           }
         } catch (err) {
-          console.error("❌ Error parsing AI data:", err);
+          console.error("❌ Error parsing AI data:", err, "Raw data:", event.data);
         }
       };
       
       ws.onclose = (event) => {
+        clearTimeout(connectionTimeout);
         console.log("🔌 AI WebSocket disconnected:", event.code, event.reason);
         setAiConnected(false);
         
@@ -314,8 +332,16 @@ function InterviewRoom({ room, onLeave }) {
       };
       
       ws.onerror = (error) => {
+        clearTimeout(connectionTimeout);
         console.error("❌ AI WebSocket error:", error);
+        console.error("WebSocket URL:", wsUrl);
         setAiConnected(false);
+        
+        // Attempt to reconnect on error too if interview is active
+        if (interviewStatus === "active") {
+          console.log("🔄 Reconnecting to AI WebSocket (after error) in 5 seconds...");
+          setTimeout(() => connectWebSocket(), 5000);
+        }
       };
       
       wsRef.current = ws;
@@ -438,30 +464,30 @@ function InterviewRoom({ room, onLeave }) {
         return;
       }
       
-      // Connect to AI WebSocket
-      connectWebSocket();
-      
       // Notify Python backend
       try {
         const response = await fetch(`${PYTHON_API_URL}/start_interview`, {
           method: "POST",
-          credentials: 'include',
           headers: { 'Content-Type': 'application/json' }
         });
         
         if (response.ok) {
           const result = await response.json();
           if (result.status === "success") {
-            setInterviewStatus("active");
-            console.log('✅ Interview started successfully!');
+            console.log('✅ Python backend notified');
           }
         }
       } catch (err) {
-        console.warn('⚠️ Could not connect to Python backend, continuing without it');
+        console.warn('⚠️ Could not connect to Python backend:', err);
       }
       
+      // Set interview as active
       setInterviewStatus("active");
+      
+      // Note: WebSocket will be connected by useEffect when participantStream is available
+      
       setIsConnecting(false);
+      console.log('✅ Interview started successfully!');
       
     } catch (err) {
       console.error("❌ Interviewer error starting interview:", err);
@@ -478,7 +504,6 @@ function InterviewRoom({ room, onLeave }) {
       try {
         const response = await fetch(`${PYTHON_API_URL}/stop_interview`, {
           method: "POST",
-          credentials: 'include',
           headers: { 'Content-Type': 'application/json' }
         });
         const result = await response.json();
@@ -569,7 +594,7 @@ function InterviewRoom({ room, onLeave }) {
     }
   };
 
-  // FIXED: Enhanced frame capture with better logging
+  // Enhanced frame capture with better logging
   const captureAndSendFrame = () => {
     if (!participantVideoRef.current) {
       console.log('No participant video reference');
@@ -1074,26 +1099,53 @@ function InterviewRoom({ room, onLeave }) {
     if (showChat) setUnreadMessages(0);
   }, [showChat]);
 
-  // FIXED: Start sending frames when participant video is ready and AI is connected
+  // Auto-connect WebSocket when interview becomes active AND participant stream is available
   useEffect(() => {
-    if (isParticipantVideoReady() && aiConnected && interviewStatus === "active") {
-      console.log('🎬 Participant video ready, starting frame capture');
-      if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
-      frameIntervalRef.current = setInterval(captureAndSendFrame, 1000);
-    } else {
-      if (frameIntervalRef.current) {
-        clearInterval(frameIntervalRef.current);
-        frameIntervalRef.current = null;
-      }
-    }
+    console.log('🔍 Checking WebSocket conditions:', {
+      interviewStatus,
+      hasParticipantStream: !!participantStream,
+      aiConnected,
+      wsReadyState: wsRef.current?.readyState
+    });
     
-    return () => {
-      if (frameIntervalRef.current) {
-        clearInterval(frameIntervalRef.current);
-        frameIntervalRef.current = null;
+    if (interviewStatus === "active" && participantStream && !aiConnected) {
+      console.log('🎯 Conditions met - connecting WebSocket...');
+      connectWebSocket();
+    }
+  }, [interviewStatus, participantStream, aiConnected]);
+
+  // Start sending frames when participant video is ready and AI is connected
+  useEffect(() => {
+    let interval = null;
+    
+    // Check readiness inside the effect to respond to aiConnected/interviewStatus changes
+    const checkAndStartCapture = () => {
+      if (isParticipantVideoReady() && aiConnected && interviewStatus === "active" && wsRef.current?.readyState === WebSocket.OPEN) {
+        console.log('🎬 All conditions met, starting frame capture');
+        if (interval) clearInterval(interval);
+        interval = setInterval(captureAndSendFrame, 1000);
+      } else {
+        if (interval) {
+          clearInterval(interval);
+          interval = null;
+        }
       }
     };
-  }, [isParticipantVideoReady(), aiConnected, interviewStatus]);
+
+    checkAndStartCapture();
+    
+    // Also check every 2 seconds if video isn't ready yet
+    const readinessCheck = setInterval(() => {
+      if (!interval && isParticipantVideoReady() && aiConnected && interviewStatus === "active") {
+        checkAndStartCapture();
+      }
+    }, 2000);
+    
+    return () => {
+      if (interval) clearInterval(interval);
+      clearInterval(readinessCheck);
+    };
+  }, [aiConnected, interviewStatus, participantStream]);
 
   useEffect(() => {
     console.log('🏠 InterviewRoom mounted');
@@ -1316,7 +1368,18 @@ function InterviewRoom({ room, onLeave }) {
           )}
           
           <div className="results-container">
-            <h3 className="results-title">AI Detection Results {aiConnected ? ' 🟢' : ' 🔴'}</h3>
+            <div className="results-header-row">
+              <h3 className="results-title">AI Detection Results {aiConnected ? ' 🟢' : ' 🔴'}</h3>
+              {!aiConnected && interviewStatus === "active" && (
+                <button 
+                  className="reconnect-ai-button" 
+                  onClick={() => connectWebSocket()}
+                  title="Retry AI Connection"
+                >
+                  🔄 Retry
+                </button>
+              )}
+            </div>
             <div className="detection-source">
               {referenceFaceSet && <span className="verified-badge">✓ Verified</span>}
             </div>

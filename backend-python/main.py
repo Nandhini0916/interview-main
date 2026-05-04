@@ -114,28 +114,37 @@ class MoodAnalyzer:
             mouth_top = face_landmarks.landmark[13]
             mouth_bottom = face_landmarks.landmark[14]
             
-            # Calculate mouth aspect ratio
+            # Calculate mouth aspect ratio (MAR)
             mouth_width = abs(mouth_right.x - mouth_left.x)
             mouth_height = abs(mouth_bottom.y - mouth_top.y)
             mouth_ratio = mouth_height / (mouth_width + 0.001)
             
             # Get eyebrow landmarks
-            left_brow = face_landmarks.landmark[70].y
-            right_brow = face_landmarks.landmark[336].y
+            left_brow_inner = face_landmarks.landmark[55].y
+            left_brow_outer = face_landmarks.landmark[70].y
+            right_brow_inner = face_landmarks.landmark[285].y
             
-            # Simple rule-based mood detection
-            if mouth_ratio > 0.4:
-                if left_brow < 0.3 and right_brow < 0.3:
+            # Get eye landmarks for squinting/widening
+            eye_top = face_landmarks.landmark[159].y
+            eye_bottom = face_landmarks.landmark[145].y
+            eye_openness = abs(eye_bottom - eye_top)
+
+            # Enhanced rule-based mood detection
+            if mouth_ratio > 0.5:
+                if eye_openness > 0.03:
                     return "surprised"
                 return "happy"
-            elif mouth_ratio < 0.15:
-                if left_brow > 0.5 and right_brow > 0.5:
-                    return "fearful"
-                return "neutral"
+            elif mouth_ratio > 0.2:
+                if left_brow_inner > left_brow_outer: # Inner brows raised
+                    return "sad"
+                return "happy"
+            elif left_brow_inner < left_brow_outer - 0.01: # Brows furrowed
+                return "angry"
             else:
                 return "neutral"
                 
-        except Exception:
+        except Exception as e:
+            logger.error(f"Mood analysis error: {e}")
             return "neutral"
 
 class AIDetector:
@@ -256,10 +265,25 @@ class AIDetector:
                 for face_landmarks in mesh_results.multi_face_landmarks:
                     # Eye movement tracking
                     eye_x = face_landmarks.landmark[33].x
-                    if self.prev_eye_x is not None and self.frame_counter % 10 == 0:
+                    if self.prev_eye_x is not None and self.frame_counter % 5 == 0:
                         if abs(eye_x - self.prev_eye_x) > EYE_MOVEMENT_THRESHOLD:
                             self.eye_movement_count += 1
                     self.prev_eye_x = eye_x
+                    
+                    # Mouth movement tracking (for speech/lipsync)
+                    mouth_top = face_landmarks.landmark[13].y
+                    mouth_bottom = face_landmarks.landmark[14].y
+                    m_ratio = abs(mouth_bottom - mouth_top) * 100 # Scaling for easier thresholding
+                    self.mouth_ratio_debug = round(m_ratio, 2)
+                    
+                    # If mouth opens significantly, detect speech
+                    if m_ratio > 1.5: 
+                        self.speech_detected = True
+                        self.lipsync = True
+                    else:
+                        self.speech_detected = False
+                        # If mouth is closed, lipsync is "good" by default
+                        self.lipsync = True
                     
                     # Update mood
                     if len(mesh_results.multi_face_landmarks) == 1:
@@ -426,7 +450,8 @@ active_connections = []
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     active_connections.append(websocket)
-    logger.info(f"✅ WebSocket connected. Total: {len(active_connections)}")
+    client_host = websocket.client.host if websocket.client else "unknown"
+    logger.info(f"✅ AI WebSocket connected from {client_host}. Total active: {len(active_connections)}")
     
     try:
         while True:
@@ -446,10 +471,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             success = await ai_detector.set_frame_from_frontend(frame_data)
                             if success:
                                 detection_data = ai_detector.process_frame()
-                                logger.info(f"📤 Sending detection: faces={detection_data.get('faces')}, mood={detection_data.get('mood')}")
+                                logger.debug(f"📤 Sending detection results: faces={detection_data.get('faces')}")
                                 await websocket.send_json(detection_data)
                             else:
-                                logger.warning("⚠️ Failed to process frame")
+                                logger.warning("⚠️ Failed to decode frame from frontend")
                     elif message_type == 'test':
                         logger.info("🧪 Test message received")
                         await websocket.send_json({"type": "test_response", "message": "OK", "timestamp": time.time()})

@@ -182,9 +182,20 @@ function ParticipantRoom({ room, onLeave }) {
     
     const wsUrl = `${PYTHON_WS_URL}/ws`;
     console.log('🔗 Connecting to AI WebSocket:', wsUrl);
+    
     const ws = new WebSocket(wsUrl);
     
+    // Set connection timeout - match InterviewRoom's 30s
+    const connectionTimeout = setTimeout(() => {
+      if (ws.readyState !== WebSocket.OPEN) {
+        console.error('❌ Participant AI WebSocket connection timeout after 30 seconds');
+        ws.close();
+        setAiConnected(false);
+      }
+    }, 30000);
+    
     ws.onopen = () => {
+      clearTimeout(connectionTimeout);
       console.log("✅ Participant WebSocket connected to AI backend");
       setAiConnected(true);
       if (isCameraOn && mediaStream) {
