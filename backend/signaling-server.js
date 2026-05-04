@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 
 // Use PORT from environment variable for Render
-const PORT = process.env.PORT || 8081;
+const PORT = process.env.PORT || 8082;
 const wss = new WebSocket.Server({ port: PORT });
 console.log(`🚀 WebRTC Signaling Server started on port ${PORT}`);
 
