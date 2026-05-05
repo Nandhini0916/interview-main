@@ -29,6 +29,7 @@ function ParticipantRoom({ room, onLeave }) {
   const canvasRef = useRef(null);
   const frameIntervalRef = useRef(null);
   const wsRef = useRef(null);
+  const isConnectingRef = useRef(false);
   const webrtcManagerRef = useRef(null);
 
   // VITE environment variables (updated from REACT_APP_)
@@ -177,8 +178,13 @@ function ParticipantRoom({ room, onLeave }) {
   };
 
   const connectWebSocket = () => {
-  try {
-    if (wsRef.current) wsRef.current.close();
+    if (isConnectingRef.current || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) {
+      return;
+    }
+
+    try {
+      isConnectingRef.current = true;
+      if (wsRef.current) wsRef.current.close();
     
     const wsUrl = `${PYTHON_WS_URL}/ws`;
     console.log('🔗 Connecting to AI WebSocket:', wsUrl);
@@ -196,6 +202,7 @@ function ParticipantRoom({ room, onLeave }) {
     
     ws.onopen = () => {
       clearTimeout(connectionTimeout);
+      isConnectingRef.current = false;
       console.log("✅ Participant WebSocket connected to AI backend");
       setAiConnected(true);
       if (isCameraOn && mediaStream) {
@@ -242,6 +249,7 @@ function ParticipantRoom({ room, onLeave }) {
     };
     
     ws.onclose = (event) => {
+      isConnectingRef.current = false;
       console.log("🔌 Participant WebSocket disconnected:", event.code, event.reason);
       setAiConnected(false);
       if (frameIntervalRef.current) {
@@ -256,6 +264,7 @@ function ParticipantRoom({ room, onLeave }) {
     };
     
     ws.onerror = (error) => {
+      isConnectingRef.current = false;
       console.error("❌ Participant WebSocket error:", error);
       console.error("WebSocket URL attempted:", wsUrl);
       setAiConnected(false);

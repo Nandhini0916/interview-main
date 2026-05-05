@@ -47,6 +47,7 @@ function InterviewRoom({ room, onLeave }) {
   const videoRef = useRef(null);
   const participantVideoRef = useRef(null);
   const wsRef = useRef(null);
+  const isConnectingRef = useRef(false);
   const chatMessagesRef = useRef(null);
   const canvasRef = useRef(null);
   const frameIntervalRef = useRef(null);
@@ -234,12 +235,12 @@ function InterviewRoom({ room, onLeave }) {
 
   // Enhanced WebSocket connection with test message and proper handling
   const connectWebSocket = () => {
+    if (isConnectingRef.current || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) {
+      return;
+    }
+
     try {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        console.log('WebSocket already connected');
-        return;
-      }
-      
+      isConnectingRef.current = true;
       if (wsRef.current) {
         wsRef.current.close();
       }
@@ -260,6 +261,7 @@ function InterviewRoom({ room, onLeave }) {
       
       ws.onopen = () => {
         clearTimeout(connectionTimeout);
+        isConnectingRef.current = false;
         console.log("✅ Interviewer connected to AI WebSocket");
         setAiConnected(true);
         
@@ -316,6 +318,7 @@ function InterviewRoom({ room, onLeave }) {
       
       ws.onclose = (event) => {
         clearTimeout(connectionTimeout);
+        isConnectingRef.current = false;
         console.log("🔌 AI WebSocket disconnected:", event.code, event.reason);
         setAiConnected(false);
         
@@ -333,6 +336,7 @@ function InterviewRoom({ room, onLeave }) {
       
       ws.onerror = (error) => {
         clearTimeout(connectionTimeout);
+        isConnectingRef.current = false;
         console.error("❌ AI WebSocket error:", error);
         console.error("WebSocket URL:", wsUrl);
         setAiConnected(false);
@@ -1123,7 +1127,7 @@ function InterviewRoom({ room, onLeave }) {
       if (isParticipantVideoReady() && aiConnected && interviewStatus === "active" && wsRef.current?.readyState === WebSocket.OPEN) {
         console.log('🎬 All conditions met, starting frame capture');
         if (interval) clearInterval(interval);
-        interval = setInterval(captureAndSendFrame, 1000);
+        interval = setInterval(captureAndSendFrame, 500); // Increased to 2 FPS
       } else {
         if (interval) {
           clearInterval(interval);

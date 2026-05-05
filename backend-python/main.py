@@ -108,38 +108,42 @@ class MoodAnalyzer:
             return "neutral"
         
         try:
-            # Get mouth landmarks
+            # Landmarks for calculation
             mouth_left = face_landmarks.landmark[61]
             mouth_right = face_landmarks.landmark[291]
             mouth_top = face_landmarks.landmark[13]
             mouth_bottom = face_landmarks.landmark[14]
+            mouth_center_y = (mouth_top.y + mouth_bottom.y) / 2
             
-            # Calculate mouth aspect ratio (MAR)
+            # Eyebrows
+            left_brow_inner = face_landmarks.landmark[55].y
+            right_brow_inner = face_landmarks.landmark[285].y
+            left_brow_outer = face_landmarks.landmark[70].y
+            
+            # Eyes
+            eye_top = face_landmarks.landmark[159].y
+            eye_bottom = face_landmarks.landmark[145].y
+            eye_openness = abs(eye_bottom - eye_top)
+            
+            # Ratios
             mouth_width = abs(mouth_right.x - mouth_left.x)
             mouth_height = abs(mouth_bottom.y - mouth_top.y)
             mouth_ratio = mouth_height / (mouth_width + 0.001)
             
-            # Get eyebrow landmarks
-            left_brow_inner = face_landmarks.landmark[55].y
-            left_brow_outer = face_landmarks.landmark[70].y
-            right_brow_inner = face_landmarks.landmark[285].y
+            # Mouth corners relative to center (positive is down, negative is up)
+            corners_up = (mouth_center_y - mouth_left.y) + (mouth_center_y - mouth_right.y)
             
-            # Get eye landmarks for squinting/widening
-            eye_top = face_landmarks.landmark[159].y
-            eye_bottom = face_landmarks.landmark[145].y
-            eye_openness = abs(eye_bottom - eye_top)
-
-            # Enhanced rule-based mood detection
-            if mouth_ratio > 0.5:
-                if eye_openness > 0.03:
-                    return "surprised"
+            # Sensitive Detection Rules
+            if mouth_ratio > 0.4 and eye_openness > 0.025:
+                return "surprised"
+            elif mouth_ratio > 0.15 or corners_up > 0.01:
                 return "happy"
-            elif mouth_ratio > 0.2:
-                if left_brow_inner > left_brow_outer: # Inner brows raised
-                    return "sad"
-                return "happy"
-            elif left_brow_inner < left_brow_outer - 0.01: # Brows furrowed
+            elif left_brow_inner > left_brow_outer + 0.005:
+                return "sad"
+            elif left_brow_inner < left_brow_outer - 0.005:
                 return "angry"
+            elif corners_up < -0.005:
+                return "sad"
             else:
                 return "neutral"
                 
@@ -277,12 +281,11 @@ class AIDetector:
                     self.mouth_ratio_debug = round(m_ratio, 2)
                     
                     # If mouth opens significantly, detect speech
-                    if m_ratio > 1.5: 
+                    if m_ratio > 1.0: # Lowered threshold from 1.5
                         self.speech_detected = True
                         self.lipsync = True
                     else:
                         self.speech_detected = False
-                        # If mouth is closed, lipsync is "good" by default
                         self.lipsync = True
                     
                     # Update mood
@@ -373,7 +376,9 @@ class AIDetector:
         
         try:
             self.process_face(frame)
-            self.process_gender(frame)
+            # Only process gender every 10 frames to save CPU (gender doesn't change frequently)
+            if self.frame_counter % 10 == 0:
+                self.process_gender(frame)
             self.process_verification(frame)
             
         except Exception as e:
@@ -471,7 +476,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             success = await ai_detector.set_frame_from_frontend(frame_data)
                             if success:
                                 detection_data = ai_detector.process_frame()
-                                logger.debug(f"📤 Sending detection results: faces={detection_data.get('faces')}")
+                                logger.info(f"📤 Results: faces={detection_data.get('faces')}, mood={detection_data.get('mood')}, speech={detection_data.get('speech')}")
                                 await websocket.send_json(detection_data)
                             else:
                                 logger.warning("⚠️ Failed to decode frame from frontend")
