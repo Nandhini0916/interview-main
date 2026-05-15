@@ -6,26 +6,46 @@ on:
       - main
 
 jobs:
-  deploy:
+  deploy-server-1:
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        host:
-          - 13.60.64.248
-          - 13.48.149.43
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Deploy to EC2
+      - name: Deploy to EC2 Server 1
         uses: appleboy/ssh-action@master
 
         with:
-          host: ${{ matrix.host }}
+          host: 13.60.64.248
           username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ secrets.EC2_SSH_KEY_1 }}
+
+          script: |
+            cd /home/ubuntu/interview-main
+
+            git pull origin main
+
+            npm install
+
+            npm run build
+
+            sudo systemctl restart nginx
+
+  deploy-server-2:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Deploy to EC2 Server 2
+        uses: appleboy/ssh-action@master
+
+        with:
+          host: 13.48.149.43
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY_2 }}
 
           script: |
             cd /home/ubuntu/interview-main
