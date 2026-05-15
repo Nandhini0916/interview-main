@@ -1,0 +1,39 @@
+name: Deploy Interview Project
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        host:
+          - 13.60.64.248
+          - 13.48.149.43
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@master
+
+        with:
+          host: ${{ matrix.host }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+
+          script: |
+            cd /home/ubuntu/interview-main
+
+            git pull origin main
+
+            npm install
+
+            npm run build
+
+            sudo systemctl restart nginx
