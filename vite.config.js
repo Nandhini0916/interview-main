@@ -8,6 +8,7 @@ export default defineConfig(({ command, mode }) => {
   
   return {
     plugins: [react()],
+    base: '/',
     server: {
       port: 5173,
     },
